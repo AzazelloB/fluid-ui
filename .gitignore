@@ -1,0 +1,5 @@
+.DS_Store
+/fluid-ui
+/fluid-ui.exe
+*.o
+*.dSYM/
