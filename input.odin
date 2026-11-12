@@ -1,9 +1,10 @@
-package main
+package fluid
 
 import "vendor:sdl3"
 
-requests :: proc(app: ^App, window: ^sdl3.Window) {
-	move_to :: proc(app: ^App, mouse: [2]f32) {
+requests :: proc(app: ^UI) {
+	window := app.window
+	move_to :: proc(app: ^UI, mouse: [2]f32) {
 		element := &app.elements[app.dragged]
 		for axis in 0..<2 {
 			source, _ := resolve(app, &element.position[axis])
@@ -28,12 +29,10 @@ requests :: proc(app: ^App, window: ^sdl3.Window) {
 				app.pressed = -1
 				if hit >= 0 && app.elements[hit].kind == .Button {
 					app.pressed = hit
-					if action := app.elements[hit].on_press; action != nil {
-						action(app, Element_ID(hit)) // Activate now, never on release.
-					}
+					append(&app.events, Element_ID(hit))
 				}
 				app.dragged = hit
-				if app.dragged >= 0 && !app.elements[app.dragged].draggable {
+				if app.dragged >= 0 && (!is_active(app, Element_ID(app.dragged)) || !app.elements[app.dragged].draggable) {
 					app.dragged = -1
 				}
 				if app.dragged >= 0 {
@@ -80,4 +79,11 @@ requests :: proc(app: ^App, window: ^sdl3.Window) {
 			app.dragged = -1
 		}
 	}
+}
+
+// A press is reported on mouse-down, independent of where release occurs.
+pressed :: proc(app: ^UI, id: Element_ID) -> bool {
+	if !is_active(app, id) { return false }
+	for event in app.events { if event == id { return true } }
+	return false
 }

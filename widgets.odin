@@ -1,25 +1,30 @@
-package main
+package fluid
 
 import "vendor:sdl3"
 
-panel :: proc(app: ^App, position, size: [2]Value, color: sdl3.Color) -> Element_ID {
-	return add_element(app, Element{position = position, size = size, color = color, visible = true})
+panel :: proc(scene: ^Scene, position, size: [2]Value, color: Color) -> Element_ID {
+	return add_element(scene, Element{position = position, size = size, color = color})
 }
 
-button :: proc(app: ^App, position, size: [2]Value, label: string, on_press: Press_Action = nil) -> Element_ID {
-	return add_element(app, Element{
+button :: proc(scene: ^Scene, position, size: [2]Value, label: string) -> Element_ID {
+	return add_element(scene, Element{
 		kind = .Button, position = position, size = size, label = label,
-		color = {48, 54, 66, 255}, visible = true, on_press = on_press,
+		color = {48, 54, 66, 255},
 	})
 }
 
-draggable_panel :: proc(app: ^App, position, size: [2]Value, color: sdl3.Color) -> Element_ID {
-	id := panel(app, position, size, color)
-	app.elements[id].draggable = true
+draggable_panel :: proc(scene: ^Scene, position, size: [2]Value, color: Color) -> Element_ID {
+	id := panel(scene, position, size, color)
+	scene.ui.elements[id].draggable = true
 	return id
 }
 
-background :: proc(app: ^App, id: Element_ID) -> sdl3.Color {
+label :: proc(scene: ^Scene, position, size: [2]Value, text: string) -> Element_ID {
+	return add_element(scene, Element{kind = .Label, position = position, size = size, label = text})
+}
+
+@(private="package")
+background :: proc(app: ^UI, id: Element_ID) -> sdl3.Color {
 	element := &app.elements[id]
 	if element.kind == .Button {
 		if app.pressed == int(id) {

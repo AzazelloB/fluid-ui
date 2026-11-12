@@ -1,4 +1,4 @@
-package main
+package fluid
 
 import "core:math"
 import "vendor:sdl3"
@@ -6,7 +6,8 @@ import ttf "vendor:sdl3/ttf"
 
 // Layout stays in window coordinates. Font glyphs are rasterized at native
 // display density, and only the renderer works in physical pixels.
-sync_text_density :: proc(app: ^App, window: ^sdl3.Window) {
+@(private="package")
+sync_text_density :: proc(app: ^UI, window: ^sdl3.Window) {
 	density := max(f32(1), sdl3.GetWindowPixelDensity(window))
 	if density != app.pixel_density {
 		assert(ttf.SetFontSize(app.font, FONT_SIZE * density))
@@ -14,13 +15,14 @@ sync_text_density :: proc(app: ^App, window: ^sdl3.Window) {
 	}
 }
 
-measure_text :: proc(app: ^App, label: string) -> (f32, f32) {
+measure_text :: proc(app: ^UI, label: string) -> (f32, f32) {
 	width, height: i32
 	assert(ttf.GetStringSize(app.font, raw_data(label), len(label), &width, &height))
 	return f32(width) / app.pixel_density, f32(height) / app.pixel_density
 }
 
-draw_label :: proc(app: ^App, element: ^Element, rect: sdl3.FRect) {
+@(private="package")
+draw_label :: proc(app: ^UI, element: ^Element, rect: sdl3.FRect) {
 	if element.text == nil {
 		element.text = ttf.CreateText(app.text_engine, app.font, raw_data(element.label), len(element.label))
 		assert(element.text != nil)
