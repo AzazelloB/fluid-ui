@@ -13,9 +13,10 @@ button :: proc(scene: ^Scene, position, size: [2]Value, label: string) -> Elemen
 	})
 }
 
-draggable_panel :: proc(scene: ^Scene, position, size: [2]Value, color: Color) -> Element_ID {
+draggable_panel :: proc(scene: ^Scene, position, size: [2]Value, color: Color, mode: Drag_Mode = .References) -> Element_ID {
 	id := panel(scene, position, size, color)
-	scene.ui.elements[id].draggable = true
+	scene.ui.elements[slot(Element_ID(id))].draggable = true
+	scene.ui.elements[slot(Element_ID(id))].drag_mode = mode
 	return id
 }
 
@@ -25,7 +26,7 @@ label :: proc(scene: ^Scene, position, size: [2]Value, text: string) -> Element_
 
 @(private="package")
 background :: proc(app: ^UI, id: Element_ID) -> sdl3.Color {
-	element := &app.elements[id]
+	element := get_element(app, id)
 	if element.kind == .Button {
 		if app.pressed == int(id) {
 			return {60, 90, 140, 255}

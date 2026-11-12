@@ -9,18 +9,18 @@ Conversation :: struct {
 }
 
 Conversations :: struct {
-	scene: ^fluid.Scene,
+	scene:                              ^fluid.Scene,
 	sidebar, heading, area, empty_hint: fluid.Element_ID,
-	items: [dynamic]Conversation,
-	send_button: fluid.Element_ID,
+	items:                              [dynamic]Conversation,
+	send_button:                        fluid.Element_ID,
 }
 
 create_conversations :: proc(page: ^Conversations, ui: ^fluid.UI, navigation: fluid.Element_ID) {
-	page.scene = fluid.create_scene(ui)
+	page.scene = fluid.create_scene(ui.window)
 	page.items = make([dynamic]Conversation, 0, 16)
 	page.sidebar = fluid.panel(page.scene,
-		{fluid.relative(ui.viewport, .Right, -260), fluid.at(0)},
-		{fluid.at(260), fluid.relative(ui.viewport, .Height)}, {32, 35, 43, 255},
+		{fluid.relative(ui.window.viewport, .Right, -260), fluid.at(0)},
+		{fluid.at(260), fluid.relative(ui.window.viewport, .Height)}, {32, 35, 43, 255},
 	)
 	page.heading = fluid.label(page.scene,
 		{fluid.relative(page.sidebar, .Left, 16), fluid.relative(page.sidebar, .Top, 20)},
@@ -32,7 +32,7 @@ create_conversations :: proc(page: ^Conversations, ui: ^fluid.UI, navigation: fl
 	)
 	page.area = fluid.panel(page.scene,
 		{fluid.relative(navigation, .Right), fluid.at(0)},
-		{fluid.distance(navigation, .Right, page.sidebar, .Left), fluid.relative(ui.viewport, .Height)},
+		{fluid.distance(navigation, .Right, page.sidebar, .Left), fluid.relative(ui.window.viewport, .Height)},
 		{24, 26, 32, 255},
 	)
 	_ = fluid.label(page.scene,
@@ -77,7 +77,9 @@ send_message :: proc(page: ^Conversations, ui: ^fluid.UI) {
 	}
 	// set_label retains a copy, so this formatted string can be temporary.
 	fluid.set_label(ui, id, fmt.tprintf("Conversation %d", len(items)))
-	if len(items) == 1 { fluid.remove(ui, page.empty_hint) }
+	if len(items) == 1 {
+		fluid.remove(ui, page.empty_hint)
+	}
 	fluid.animate_to(ui, id,
 		{fluid.relative(page.sidebar, .Left, 16), fluid.relative(page.heading, .Bottom, 16)},
 		{fluid.relative(page.sidebar, .Width, -32), fluid.at(44)}, flight_animation(),
@@ -86,7 +88,9 @@ send_message :: proc(page: ^Conversations, ui: ^fluid.UI) {
 }
 
 select_conversation :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Element_ID) {
-	for item in page.items { fluid.set_selected(ui, item.element, item.element == id) }
+	for item in page.items {
+		fluid.set_selected(ui, item.element, item.element == id)
+	}
 }
 
 update_conversations :: proc(page: ^Conversations, ui: ^fluid.UI) {
@@ -99,7 +103,9 @@ update_conversations :: proc(page: ^Conversations, ui: ^fluid.UI) {
 			select_conversation(page, ui, item.element)
 		}
 	}
-	if fluid.pressed(ui, page.send_button) { send_message(page, ui) }
+	if fluid.pressed(ui, page.send_button) {
+		send_message(page, ui)
+	}
 	for item in page.items {
 		if !item.arriving && fluid.pressed(ui, item.element) {
 			select_conversation(page, ui, item.element)

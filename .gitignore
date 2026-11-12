@@ -1,4 +1,5 @@
 .DS_Store
+/.build/
 /fluid-ui
 /fluid-ui.exe
 *.o

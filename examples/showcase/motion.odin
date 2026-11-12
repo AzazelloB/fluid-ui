@@ -29,6 +29,14 @@ arc :: proc(from, to: fluid.Rect, elapsed, duration: f64) -> fluid.Rect {
 	return result
 }
 
-flight_animation :: proc() -> fluid.Animation { return {duration = 0.9, sample = arc} }
-stack_animation :: proc() -> fluid.Animation { return {duration = 0.4, sample = smooth_damp} }
-entry_animation :: proc() -> fluid.Animation { return {duration = 0.14, sample = smooth_damp} }
+flight_animation :: proc() -> fluid.Animation {
+	return {duration = 0.9, sample = arc}
+}
+
+stack_animation :: proc() -> fluid.Animation {
+	return {duration = 0.4, sample = smooth_damp}
+}
+
+entry_animation :: proc() -> fluid.Animation {
+	return {duration = 0.14, sample = smooth_damp}
+}
