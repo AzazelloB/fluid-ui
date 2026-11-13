@@ -18,10 +18,13 @@ Docking :: struct {
 	detach_failed:              bool,
 }
 
-create_docking :: proc(page: ^Docking, ui: ^fluid.UI, navigation: fluid.Element_ID) {
+create_docking :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase)) {
+	page := &app.docking
+	navigation := app.sidebar
 	page.scene = fluid.create_scene(ui.window)
 	page.targets = fluid.create_scene(ui.window)
 	page.card_scene = fluid.create_scene(ui.window)
+	append(&entry.scenes, page.scene, page.card_scene)
 	_ = fluid.label(page.scene,
 		{fluid.relative(navigation, .Right, 24), fluid.at(32)},
 		{fluid.distance(navigation, .Right, ui.window.viewport, .Right, -48), fluid.at(32)},
@@ -57,6 +60,7 @@ create_docking :: proc(page: ^Docking, ui: ^fluid.UI, navigation: fluid.Element_
 		{fluid.at(CARD_SIZE[0]), fluid.at(CARD_SIZE[1])}, {76, 137, 211, 255}, mode = .Independent,
 	)
 	fluid.set_label(ui, page.card, "Drag me")
+	fluid.on_update(ui, page.area, page, update_docking)
 }
 
 contains :: proc(rect: fluid.Rect, point: [2]f32) -> bool {
@@ -103,9 +107,6 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 		return
 	}
 	fluid.set_label(ui, page.card, "Drag back to dock")
-	// Present the complete content before revealing a newly created window.
-	fluid.draw(ui, window)
-	sdl3.RenderPresent(window.renderer)
 	if !fluid.show_window(window) {
 		page.detach_failed = true
 		fmt.eprintln(sdl3.GetError())
@@ -128,7 +129,7 @@ dock_card :: proc(page: ^Docking, ui: ^fluid.UI, dock: Dock) {
 	fluid.set_label(ui, page.card, dock == .Bottom ? "Horizontal card" : "Vertical card")
 	fluid.animate_to(ui, page.card,
 		{fluid.relative(target, .Left), fluid.relative(target, .Top)},
-		{fluid.relative(target, .Width), fluid.relative(target, .Height)}, stack_animation(),
+		{fluid.relative(target, .Width), fluid.relative(target, .Height)}, {duration = 0.4, sample = smooth_damp, progress = damp_progress},
 	)
 }
 
@@ -141,22 +142,16 @@ reset_card :: proc(page: ^Docking, ui: ^fluid.UI) {
 	fluid.set_label(ui, page.card, "Drag me")
 }
 
-activate_docking :: proc(page: ^Docking) {
-	fluid.activate(page.scene)
-	fluid.activate(page.card_scene)
-}
-
-deactivate_docking :: proc(page: ^Docking, ui: ^fluid.UI) {
-	// The detached window belongs to this page; closing it returns the same card.
+leave_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
+	page := &app.docking
+	// The detached window belongs to this demo; return its card before closing.
 	if page.floating_scene != nil {
 		reset_card(page, ui)
 	}
 	fluid.deactivate(page.targets)
-	fluid.deactivate(page.card_scene)
-	fluid.deactivate(page.scene)
 }
 
-update_docking :: proc(page: ^Docking, ui: ^fluid.UI) {
+update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 	if page.floating_scene != nil && page.floating_scene.window.close_requested {
 		reset_card(page, ui)
 		fluid.deactivate(page.targets)

@@ -5,40 +5,24 @@ import fluid "../.."
 import "vendor:sdl3"
 
 Launch_Reveal :: struct {
-	origin:   [2]f32,
-	started:  u64,
-	finished: bool,
+	origin: [2]f32,
 }
 
-create_launch_reveal :: proc(window: ^fluid.Window) -> Launch_Reveal {
+start_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) {
 	mouse := fluid.pointer_position(window)
 	r := fluid.bounds(window.ui, window.viewport)
-	// Use the center when a terminal/search launch leaves the cursor elsewhere.
 	if mouse[0] < 0 || mouse[0] >= r.w || mouse[1] < 0 || mouse[1] >= r.h {
 		mouse = {r.w / 2, r.h / 2}
 	}
-	return {origin = mouse}
+	reveal.origin = mouse
+	fluid.window_effect(window, 0.45, reveal, draw_launch_reveal, finish_launch_reveal)
 }
 
-// Returns true once, when the transparent reveal window can be replaced.
-draw_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) -> bool {
-	if reveal.finished {
-		return false
-	}
-	now := sdl3.GetTicksNS()
-	flags := sdl3.GetWindowFlags(window.handle)
-	// Visibility starts the reveal; keyboard focus does not control rendering.
-	if reveal.started == 0 && .HIDDEN not_in flags {
-		reveal.started = now
-	}
-	t: f32
-	if reveal.started > 0 {
-		t = clamp(f32(f64(now - reveal.started) / 1e9 / 0.45), 0, 1)
-	}
-	if t >= 1 {
-		reveal.finished = true
-		return true
-	}
+finish_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) {
+	fluid.set_window_flags(window, {})
+}
+
+draw_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window, t: f32) {
 	r := fluid.bounds(window.ui, window.viewport)
 	scale := window.pixel_density
 	center := reveal.origin * scale
@@ -63,5 +47,4 @@ draw_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) -> boo
 	// Erase pixels outside the circle, revealing the actual desktop underneath.
 	assert(sdl3.SetRenderDrawBlendMode(window.renderer, sdl3.BLENDMODE_NONE))
 	assert(sdl3.RenderGeometry(window.renderer, nil, raw_data(vertices[:]), len(vertices), nil, 0))
-	return false
 }

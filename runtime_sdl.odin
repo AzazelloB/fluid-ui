@@ -1,6 +1,7 @@
 package fluid
 
 import "core:fmt"
+import "core:mem"
 import virtual "core:mem/virtual"
 import "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
@@ -22,6 +23,7 @@ UI :: struct {
 	events:                            [dynamic]Element_ID, // Mouse-down presses in the current frame.
 	storage:                           virtual.Arena,
 	previous:                          u64,
+	frame:                             u64,
 	sdl_ready, ttf_ready, arena_ready: bool,
 }
 
@@ -93,7 +95,9 @@ destroy :: proc(app: ^UI) {
 	app^ = {}
 }
 
+@(private="package")
 begin_frame :: proc(app: ^UI) -> f64 {
+	app.frame += 1
 	// Process window events before starting work on any window's drawable.
 	for window in app.windows {
 		sync_text_density(window)
@@ -105,4 +109,66 @@ begin_frame :: proc(app: ^UI) -> f64 {
 	dt := f64(now - app.previous) / 1_000_000_000
 	app.previous = now
 	return dt
+}
+
+// Owns storage, SDL, frame timing, dispatch, drawing, and cleanup. Application
+// code creates elements and registers behavior; it never pumps the event loop.
+run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)) {
+	assert(owner != nil && create != nil)
+	storage: virtual.Arena
+	if err := virtual.arena_init_growing(&storage); err != nil {
+		fmt.eprintln("Cannot initialize application storage:", err)
+		return
+	}
+	defer virtual.arena_destroy(&storage)
+	context.allocator = virtual.arena_allocator(&storage)
+	ui: UI
+	if !init(&ui, config) {
+		return
+	}
+	defer destroy(&ui)
+	create(owner, &ui)
+	for ui.running {
+		dt := begin_frame(&ui)
+		defer mem.free_all(context.temp_allocator)
+		requests(&ui)
+		if !ui.running {
+			break
+		}
+		advance_window_effects(&ui, dt)
+		if !ui.running {
+			break
+		}
+		advance_animations(&ui, dt)
+		if !ui.running {
+			break
+		}
+		dispatch_behavior(&ui, dt)
+		if !ui.running {
+			break
+		}
+		// Behavior gets the first chance to transfer elements out of closing windows.
+		for i := 0; i < len(ui.windows); {
+			window := ui.windows[i]
+			if window.close_requested {
+				close_window(window)
+				continue
+			}
+			i += 1
+		}
+		for window in ui.windows {
+			if window.pending_flags {
+				flags := window.requested_flags
+				window.pending_flags = false
+				if !replace_window(window, flags) {
+					fmt.eprintln("Cannot replace window:", sdl3.GetError())
+					ui.running = false
+					break
+				}
+			}
+			if .HIDDEN not_in sdl3.GetWindowFlags(window.handle) {
+				present_window(window)
+			}
+		}
+	}
 }

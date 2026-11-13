@@ -34,12 +34,16 @@ Distance :: struct {
 	from, to: Anchor,
 }
 
-Motion_Sample :: proc(from, to: Rect, elapsed, duration: f64) -> Rect
+Motion_Sample :: proc(from, to: Rect, progress: f32) -> Rect
 
+// Transition clocks and callbacks are owned by Fluid, alongside their target.
 Motion :: struct {
-	from:              Rect,
-	elapsed, duration: f64,
-	sample:            Motion_Sample,
+	from:      Rect,
+	elapsed:   f64,
+	progress:  f32,
+	animation: Animation,
+	complete:  Element_Callback,
+	frame:     u64,
 }
 
 Value :: struct {
@@ -49,19 +53,22 @@ Value :: struct {
 }
 
 Element :: struct {
-	generation: u32,
-	alive:      bool,
-	space:      ^Window, // Viewport sources have no scene.
-	kind:       Element_Kind,
-	position:   [2]Value,
-	size:       [2]Value,
-	color:      sdl3.Color,
-	label:      string,
-	text:       ^ttf.Text,
-	text_label: string,
-	selected:   bool,
-	draggable:  bool,
-	drag_mode:  Drag_Mode,
-	owner:      ^Scene,
-	motion:     Motion,
+	generation:    u32,
+	alive:         bool,
+	space:         ^Window, // Viewport sources have no scene.
+	kind:          Element_Kind,
+	position:      [2]Value,
+	size:          [2]Value,
+	color:         sdl3.Color,
+	label:         string,
+	text:          ^ttf.Text,
+	text_label:    string,
+	selected:      bool,
+	draggable:     bool,
+	drag_mode:     Drag_Mode,
+	owner:         ^Scene,
+	motion:        Motion,
+	motion_serial: u64,
+	press:         Element_Callback,
+	update:        Update_Callback,
 }

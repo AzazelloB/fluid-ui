@@ -39,6 +39,7 @@ set_layout :: proc(app: ^UI, id: Element_ID, position, size: [2]Value) {
 	element := get_element(app, id)
 	element.position = position
 	element.size = size
+	element.motion_serial += 1
 	element.motion = {}
 }
 

@@ -12,11 +12,13 @@ Conversations :: struct {
 	scene:                              ^fluid.Scene,
 	sidebar, heading, area, empty_hint: fluid.Element_ID,
 	items:                              [dynamic]Conversation,
-	send_button:                        fluid.Element_ID,
 }
 
-create_conversations :: proc(page: ^Conversations, ui: ^fluid.UI, navigation: fluid.Element_ID) {
+create_conversations :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase)) {
+	navigation := app.sidebar
+	page := &app.conversations
 	page.scene = fluid.create_scene(ui.window)
+	append(&entry.scenes, page.scene)
 	page.items = make([dynamic]Conversation, 0, 16)
 	page.sidebar = fluid.panel(page.scene,
 		{fluid.relative(ui.window.viewport, .Right, -260), fluid.at(0)},
@@ -54,25 +56,26 @@ create_send_button :: proc(page: ^Conversations, ui: ^fluid.UI) {
 	fluid.set_color(ui, id, {47, 99, 165, 255})
 	fluid.animate_to(ui, id,
 		{fluid.relative(page.area, .Left, 24), fluid.relative(page.area, .Bottom, -80)},
-		{fluid.relative(page.area, .Width, -48), fluid.at(56)}, entry_animation(),
+		{fluid.relative(page.area, .Width, -48), fluid.at(56)}, {duration = 0.14, sample = smooth_damp, progress = damp_progress},
 	)
-	page.send_button = id
+	fluid.on_press(ui, id, page, send_message)
 }
 
-send_message :: proc(page: ^Conversations, ui: ^fluid.UI) {
-	id := page.send_button
+send_message :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Element_ID) {
+	fluid.clear_press(ui, id)
 	inject_at(&page.items, 0, Conversation{element = id, arriving = true})
 	items := page.items[:]
 	// Retarget bottom-up to preserve the current starting positions.
 	for i := len(items) - 1; i > 0; i -= 1 {
-		animation := stack_animation()
+		duration := f64(0.4)
+		sample := smooth_damp
 		if items[i].arriving {
-			animation = flight_animation()
-			animation.duration = fluid.animation_remaining(ui, items[i].element)
+			sample = arc
+			duration = fluid.animation_remaining(ui, items[i].element)
 		}
-		fluid.animate_to(ui, items[i].element,
+		fluid.retarget(ui, items[i].element,
 			{fluid.relative(page.sidebar, .Left, 16), fluid.relative(items[i - 1].element, .Bottom, 10, target = true)},
-			{fluid.relative(page.sidebar, .Width, -32), fluid.at(44)}, animation,
+			{fluid.relative(page.sidebar, .Width, -32), fluid.at(44)}, {duration = duration, sample = sample, progress = damp_progress},
 		)
 	}
 	// set_label retains a copy, so this formatted string can be temporary.
@@ -82,8 +85,9 @@ send_message :: proc(page: ^Conversations, ui: ^fluid.UI) {
 	}
 	fluid.animate_to(ui, id,
 		{fluid.relative(page.sidebar, .Left, 16), fluid.relative(page.heading, .Bottom, 16)},
-		{fluid.relative(page.sidebar, .Width, -32), fluid.at(44)}, flight_animation(),
+		{fluid.relative(page.sidebar, .Width, -32), fluid.at(44)}, {duration = 0.9, sample = arc, progress = damp_progress},
 	)
+	fluid.on_complete(ui, id, page, conversation_arrived)
 	create_send_button(page, ui)
 }
 
@@ -93,22 +97,14 @@ select_conversation :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Eleme
 	}
 }
 
-update_conversations :: proc(page: ^Conversations, ui: ^fluid.UI) {
-	// Finish oldest first so the newest arrival wins selection in a shared frame.
-	for i := len(page.items) - 1; i >= 0; i -= 1 {
-		item := &page.items[i]
-		if item.arriving && fluid.animation_finished(ui, item.element) {
+conversation_arrived :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Element_ID) {
+	for &item in page.items {
+		if item.element == id {
 			item.arriving = false
-			fluid.set_color(ui, item.element, {48, 54, 66, 255})
-			select_conversation(page, ui, item.element)
+			break
 		}
 	}
-	if fluid.pressed(ui, page.send_button) {
-		send_message(page, ui)
-	}
-	for item in page.items {
-		if !item.arriving && fluid.pressed(ui, item.element) {
-			select_conversation(page, ui, item.element)
-		}
-	}
+	fluid.set_color(ui, id, {48, 54, 66, 255})
+	fluid.on_press(ui, id, page, select_conversation)
+	select_conversation(page, ui, id)
 }

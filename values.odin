@@ -89,7 +89,7 @@ read_local_attribute :: proc(app: ^UI, anchor: Anchor, depth: int, target_only: 
 	destination := target_only || anchor.target
 	assert(valid(app, anchor.element), "Invalid or expired element reference")
 	element := get_element(app, anchor.element)
-	if !destination && element.motion.duration > 0 && element.motion.elapsed < element.motion.duration && anchor.attribute != .Content_Width {
+	if !destination && element.motion.animation.sample != nil && anchor.attribute != .Content_Width {
 		r := evaluated_bounds(app, anchor.element, depth, false)
 		switch anchor.attribute {
 		case .Left:
@@ -186,8 +186,8 @@ evaluated_bounds :: proc(app: ^UI, id: Element_ID, depth: int, target_only: bool
 		read(app, &element.size[1], depth + 1, target_only, space),
 	}
 	motion := element.motion
-	if !target_only && motion.duration > 0 && motion.elapsed < motion.duration {
-		result = motion.sample(motion.from, result, motion.elapsed, motion.duration)
+	if !target_only && motion.animation.sample != nil {
+		result = motion.animation.sample(motion.from, result, motion.progress)
 	}
 	return result
 }

@@ -17,6 +17,9 @@ Window :: struct {
 	viewport:        Element_ID,
 	scenes:          [dynamic]^Scene,
 	close_requested: bool,
+	effect:          Window_Effect,
+	pending_flags:   bool,
+	requested_flags: sdl3.WindowFlags,
 	storage:         virtual.Arena,
 }
 
@@ -89,6 +92,7 @@ create_window_resources :: proc(window: ^Window, config: Config) -> bool {
 
 // Change creation-only SDL flags without changing the Fluid window, scenes,
 // or viewport ID. Call between frames; renderer-specific text is rebuilt.
+@(private="package")
 replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	config := Config{title = sdl3.GetWindowTitle(window.handle), flags = flags | {.HIDDEN}}
 	position: [2]i32
@@ -103,6 +107,7 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 		scenes = window.scenes,
 		close_requested = window.close_requested,
 		storage = window.storage,
+		effect = window.effect,
 	}
 	if !create_window_resources(&replacement, config) {
 		return false
@@ -122,8 +127,7 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	}
 	previous := window^
 	window^ = replacement
-	draw(app, window)
-	sdl3.RenderPresent(window.renderer)
+	present_window(window)
 	if .HIDDEN not_in sdl3.GetWindowFlags(previous.handle) && !show_window(window) {
 		for scene in window.scenes {
 			for id in scene.members {
@@ -136,8 +140,7 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	}
 	// Present again after showing: some backends skip hidden-window presentation.
 	if .HIDDEN not_in sdl3.GetWindowFlags(window.handle) {
-		draw(app, window)
-		sdl3.RenderPresent(window.renderer)
+		present_window(window)
 	}
 	if app.drag.element >= 0 && get_element(app, Element_ID(app.drag.element)).owner.window == window {
 		end_drag(app)
@@ -159,6 +162,8 @@ close_window :: proc(window: ^Window) {
 			remove(app, scene.members[len(scene.members) - 1])
 		}
 	}
+	window.effect = {}
+	window.pending_flags = false
 	remove(app, window.viewport)
 	virtual.arena_destroy(&window.storage)
 	release_window_resources(window)
@@ -187,6 +192,8 @@ pointer_position :: proc(window: ^Window) -> [2]f32 {
 }
 
 show_window :: proc(window: ^Window) -> bool {
+	// Prime hidden content before making the window visible.
+	present_window(window)
 	return sdl3.ShowWindow(window.handle)
 }
 
@@ -218,4 +225,11 @@ release_window_resources :: proc(window: ^Window) {
 	window.font = nil
 	window.renderer = nil
 	window.handle = nil
+}
+
+// Creation-only flag changes are performed by Fluid before the next draw.
+set_window_flags :: proc(window: ^Window, flags: sdl3.WindowFlags) {
+	assert(window.handle != nil)
+	window.requested_flags = flags
+	window.pending_flags = true
 }
