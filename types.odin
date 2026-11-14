@@ -4,7 +4,26 @@ import "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
 TEXT_PADDING :: 16
-FONT_SIZE :: 16
+FONT_SIZE :: 14
+
+Text_Size :: enum {Body, Caption, Heading, Title}
+text_size_points :: proc(size: Text_Size) -> f32 {
+	switch size {
+	case .Body: return 14
+	case .Caption: return 11
+	case .Heading: return 21
+	case .Title: return 34
+	}
+	unreachable()
+}
+Text_Align :: enum {Center, Left}
+
+Style :: struct {
+	radius: f32,
+	border: Color,
+	border_width: f32,
+	shadow: f32,
+}
 
 Element_Kind :: enum {Panel, Button, Label}
 Drag_Mode :: enum {References, Independent}
@@ -61,6 +80,10 @@ Element :: struct {
 	size:          [2]Value,
 	color:         sdl3.Color,
 	label:         string,
+	style:         Style,
+	text_size:     Text_Size,
+	text_align:    Text_Align,
+	text_color:    Color,
 	text:          ^ttf.Text,
 	text_label:    string,
 	selected:      bool,

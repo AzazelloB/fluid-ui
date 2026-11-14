@@ -25,41 +25,33 @@ create_docking :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 	page.targets = fluid.create_scene(ui.window)
 	page.card_scene = fluid.create_scene(ui.window)
 	append(&entry.scenes, page.scene, page.card_scene)
-	_ = fluid.label(page.scene,
-		{fluid.relative(navigation, .Right, 24), fluid.at(32)},
-		{fluid.distance(navigation, .Right, ui.window.viewport, .Right, -48), fluid.at(32)},
-		"One element, multiple windows",
-	)
-	_ = fluid.label(page.scene,
-		{fluid.relative(navigation, .Right, 24), fluid.at(72)},
-		{fluid.distance(navigation, .Right, ui.window.viewport, .Right, -48), fluid.at(28)},
-		"Drag to dock or pull past the edge to detach",
-	)
-	page.area = fluid.panel(page.scene,
-		{fluid.relative(navigation, .Right, 24), fluid.at(124)},
-		{fluid.distance(navigation, .Right, ui.window.viewport, .Right, -48), fluid.relative(ui.window.viewport, .Height, -148)},
-		{28, 31, 39, 255},
-	)
-	page.zones[.Left] = fluid.panel(page.targets,
+	left := fluid.relative(navigation, .Right, 36)
+	width := fluid.distance(navigation, .Right, ui.window.viewport, .Right, -72)
+	page.area = demo_surface(page.scene,
+		{left, fluid.at(24)},
+		{width, fluid.relative(ui.window.viewport, .Height, -48)}, radius = 20)
+	page.zones[.Left] = demo_surface(page.targets,
 		{fluid.relative(page.area, .Left, 12), fluid.relative(page.area, .Top, 12)},
-		{fluid.at(160), fluid.relative(page.area, .Height, -148)}, {42, 49, 64, 255},
+		{fluid.at(160), fluid.relative(page.area, .Height, -148)}, {32, 47, 59, 255},
 	)
-	page.zones[.Right] = fluid.panel(page.targets,
+	page.zones[.Right] = demo_surface(page.targets,
 		{fluid.relative(page.area, .Right, -172), fluid.relative(page.area, .Top, 12)},
-		{fluid.at(160), fluid.relative(page.area, .Height, -148)}, {42, 49, 64, 255},
+		{fluid.at(160), fluid.relative(page.area, .Height, -148)}, {32, 47, 59, 255},
 	)
-	page.zones[.Bottom] = fluid.panel(page.targets,
+	page.zones[.Bottom] = demo_surface(page.targets,
 		{fluid.relative(page.area, .Left, 12), fluid.relative(page.area, .Bottom, -112)},
-		{fluid.relative(page.area, .Width, -24), fluid.at(100)}, {42, 49, 64, 255},
+		{fluid.relative(page.area, .Width, -24), fluid.at(100)}, {32, 47, 59, 255},
 	)
 	for dock in Dock {
-		fluid.set_label(ui, page.zones[dock], dock == .Bottom ? "Horizontal dock" : "Vertical dock")
+		fluid.set_label(ui, page.zones[dock], dock == .Bottom ? "Bottom" : dock == .Left ? "Left" : "Right")
+		fluid.set_text_style(ui, page.zones[dock], .Body, MUTED)
 	}
 	page.card = fluid.draggable_panel(page.card_scene,
 		{fluid.relative(page.area, .Left, 196), fluid.relative(page.area, .Top, 48)},
-		{fluid.at(CARD_SIZE[0]), fluid.at(CARD_SIZE[1])}, {76, 137, 211, 255}, mode = .Independent,
+		{fluid.at(CARD_SIZE[0]), fluid.at(CARD_SIZE[1])}, {54, 103, 91, 255}, mode = .Independent,
 	)
-	fluid.set_label(ui, page.card, "Drag me")
+	fluid.set_label(ui, page.card, "Drag")
+	fluid.set_style(ui, page.card, {radius = 16, border = {120, 188, 161, 255}, border_width = 1, shadow = 16})
 	fluid.on_update(ui, page.area, page, update_docking)
 }
 
@@ -86,7 +78,7 @@ move_floating_window :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) -> bo
 detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 	if page.floating_scene == nil {
 		window := fluid.create_window(ui, {
-			title = "Fluid card — move by title bar",
+			title = "Fluid card",
 			size = {i32(CARD_SIZE[0]), i32(CARD_SIZE[1])},
 			minimum_size = {120, 80},
 			flags = {.HIDDEN},
@@ -139,7 +131,7 @@ reset_card :: proc(page: ^Docking, ui: ^fluid.UI) {
 		{fluid.relative(page.area, .Left, 196), fluid.relative(page.area, .Top, 48)},
 		{fluid.at(CARD_SIZE[0]), fluid.at(CARD_SIZE[1])},
 	)
-	fluid.set_label(ui, page.card, "Drag me")
+	fluid.set_label(ui, page.card, "Drag")
 }
 
 leave_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
@@ -170,7 +162,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		position := mouse - page.grab
 		fluid.set_layout(ui, page.card,
 			{fluid.at(position[0]), fluid.at(position[1])}, {fluid.at(CARD_SIZE[0]), fluid.at(CARD_SIZE[1])})
-		fluid.set_label(ui, page.card, "Drag me")
+		fluid.set_label(ui, page.card, "Drag")
 		fluid.rebase_drag(ui, page.card)
 		if page.floating_scene != nil && owner == page.floating_scene.window {
 			if !sdl3.SetWindowSize(owner.handle, i32(CARD_SIZE[0]), i32(CARD_SIZE[1])) {
@@ -204,7 +196,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		if over {
 			selected = dock
 		}
-		fluid.set_color(ui, page.zones[dock], over ? fluid.Color{61, 95, 143, 255} : fluid.Color{42, 49, 64, 255})
+		fluid.set_color(ui, page.zones[dock], over ? fluid.Color{42, 85, 77, 255} : fluid.Color{32, 47, 59, 255})
 	}
 	if page.floating_scene != nil && fluid.element_window(ui, page.card) == page.floating_scene.window {
 		if page.drag_moved {

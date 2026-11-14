@@ -125,7 +125,7 @@ read_local_attribute :: proc(app: ^UI, anchor: Anchor, depth: int, target_only: 
 		if len(element.label) == 0 {
 			return 0
 		}
-		width, _ := measure_text(element.owner.window, element.label)
+		width, _ := measure_text(element.owner.window, element.label, element.text_size)
 		return width + TEXT_PADDING * 2
 	}
 	unreachable()
@@ -193,10 +193,12 @@ evaluated_bounds :: proc(app: ^UI, id: Element_ID, depth: int, target_only: bool
 }
 
 @(private="package")
+// Decorative surfaces and labels do not intercept buttons or draggable cards.
 hit_test :: proc(app: ^UI, window: ^Window, x, y: f32) -> int {
 	for i := len(app.active) - 1; i >= 0; i -= 1 {
 		id := app.active[i]
-		if get_element(app, id).owner.window != window {
+		element := get_element(app, id)
+		if element.owner.window != window || (element.kind != .Button && !element.draggable) {
 			continue
 		}
 		r := bounds(app, id)

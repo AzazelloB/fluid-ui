@@ -9,6 +9,9 @@ add_element :: proc(scene: ^Scene, definition: Element) -> Element_ID {
 	context.allocator = virtual.arena_allocator(&app.storage)
 	element := definition
 	element.owner = scene
+	if element.text_color == (Color{}) {
+		element.text_color = {230, 236, 244, 255}
+	}
 	element.label = strings.clone(definition.label)
 	id := register_element(app, element)
 	append(&scene.members, id)
@@ -45,4 +48,20 @@ set_layout :: proc(app: ^UI, id: Element_ID, position, size: [2]Value) {
 
 element_window :: proc(app: ^UI, id: Element_ID) -> ^Window {
 	return coordinate_window(get_element(app, id))
+}
+
+set_style :: proc(app: ^UI, id: Element_ID, style: Style) {
+	get_element(app, id).style = style
+}
+
+set_text_style :: proc(app: ^UI, id: Element_ID, size: Text_Size = .Body,
+	color: Color = {230, 236, 244, 255}, align: Text_Align = .Center,
+) {
+	element := get_element(app, id)
+	if element.text_size != size {
+		release_text(element)
+	}
+	element.text_size = size
+	element.text_color = color
+	element.text_align = align
 }

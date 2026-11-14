@@ -9,7 +9,8 @@ panel :: proc(scene: ^Scene, position, size: [2]Value, color: Color) -> Element_
 button :: proc(scene: ^Scene, position, size: [2]Value, label: string) -> Element_ID {
 	return add_element(scene, Element{
 		kind = .Button, position = position, size = size, label = label,
-		color = {48, 54, 66, 255},
+		color = {35, 44, 57, 255},
+		style = {radius = 10, border = {64, 77, 94, 255}, border_width = 1},
 	})
 }
 
@@ -28,18 +29,20 @@ label :: proc(scene: ^Scene, position, size: [2]Value, text: string) -> Element_
 background :: proc(app: ^UI, id: Element_ID) -> sdl3.Color {
 	element := get_element(app, id)
 	if element.kind == .Button {
-		if app.pressed == int(id) {
-			return {60, 90, 140, 255}
-		}
+		color := element.color
 		if element.selected {
-			if app.hovered == int(id) {
-				return {58, 92, 142, 255}
-			}
-			return {48, 78, 124, 255}
+			color = {44, 78, 75, 255}
 		}
-		if app.hovered == int(id) {
-			return {65, 73, 89, 255}
+		delta: i32
+		if app.pressed == int(id) {
+			delta = -8
+		} else if app.hovered == int(id) {
+			delta = 12
 		}
+		color.r = u8(clamp(i32(color.r) + delta, 0, 255))
+		color.g = u8(clamp(i32(color.g) + delta, 0, 255))
+		color.b = u8(clamp(i32(color.b) + delta, 0, 255))
+		return color
 	}
 	return element.color
 }

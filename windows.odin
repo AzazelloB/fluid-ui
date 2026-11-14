@@ -11,7 +11,7 @@ Window :: struct {
 	ui:              ^UI,
 	handle:          ^sdl3.Window,
 	renderer:        ^sdl3.Renderer,
-	font:            ^ttf.Font,
+	fonts:           [Text_Size]^ttf.Font,
 	text_engine:     ^ttf.TextEngine,
 	pixel_density:   f32,
 	viewport:        Element_ID,
@@ -75,12 +75,15 @@ create_window_resources :: proc(window: ^Window, config: Config) -> bool {
 		return false
 	}
 	window.pixel_density = max(f32(1), sdl3.GetWindowPixelDensity(window.handle))
-	window.font = ttf.OpenFont("/System/Library/Fonts/SFNS.ttf", FONT_SIZE * window.pixel_density)
-	if window.font == nil {
-		window.font = ttf.OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", FONT_SIZE * window.pixel_density)
-	}
-	if window.font == nil {
-		return false
+	for size in Text_Size {
+		font := ttf.OpenFont("/System/Library/Fonts/SFNS.ttf", text_size_points(size) * window.pixel_density)
+		if font == nil {
+			font = ttf.OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", text_size_points(size) * window.pixel_density)
+		}
+		if font == nil {
+			return false
+		}
+		window.fonts[size] = font
 	}
 	window.text_engine = ttf.CreateRendererTextEngine(window.renderer)
 	if window.text_engine == nil {
@@ -212,8 +215,10 @@ release_window_resources :: proc(window: ^Window) {
 	if window.text_engine != nil {
 		ttf.DestroyRendererTextEngine(window.text_engine)
 	}
-	if window.font != nil {
-		ttf.CloseFont(window.font)
+	for font in window.fonts {
+		if font != nil {
+			ttf.CloseFont(font)
+		}
 	}
 	if window.renderer != nil {
 		sdl3.DestroyRenderer(window.renderer)
@@ -222,7 +227,7 @@ release_window_resources :: proc(window: ^Window) {
 		sdl3.DestroyWindow(window.handle)
 	}
 	window.text_engine = nil
-	window.font = nil
+	window.fonts = {}
 	window.renderer = nil
 	window.handle = nil
 }
