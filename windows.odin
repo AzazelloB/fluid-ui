@@ -14,6 +14,7 @@ Window :: struct {
 	fonts:           [Text_Size]^ttf.Font,
 	text_engine:     ^ttf.TextEngine,
 	pixel_density:   f32,
+	font_unit_size:  f32,
 	viewport:        Element_ID,
 	scenes:          [dynamic]^Scene,
 	close_requested: bool,
@@ -44,8 +45,8 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 	}
 	w, h: i32
 	assert(sdl3.GetWindowSize(window.handle, &w, &h))
-	// A reference source, not a drawable or a parent.
-	window.viewport = register_element(app, Element{space = window, size = {at(f32(w)), at(f32(h))}})
+	// Viewport geometry, not a drawable or a parent.
+	window.viewport = register_element(app, Element{space = window, pins = Pins{right = f32(w) / app.base_font_size, bottom = f32(h) / app.base_font_size}})
 	append(&app.windows, window)
 	return window
 }
@@ -59,11 +60,11 @@ create_window_resources :: proc(window: ^Window, config: Config) -> bool {
 			release_window_resources(window)
 		}
 	}
-	window.handle = sdl3.CreateWindow(config.title, config.size[0], config.size[1], config.flags | {.RESIZABLE, .HIGH_PIXEL_DENSITY})
+	window.handle = sdl3.CreateWindow(config.title, i32(config.size[0] * window.ui.base_font_size), i32(config.size[1] * window.ui.base_font_size), config.flags | {.RESIZABLE, .HIGH_PIXEL_DENSITY})
 	if window.handle == nil {
 		return false
 	}
-	if !sdl3.SetWindowMinimumSize(window.handle, max(i32(1), config.minimum_size[0]), max(i32(1), config.minimum_size[1])) {
+	if !sdl3.SetWindowMinimumSize(window.handle, max(i32(1), i32(config.minimum_size[0] * window.ui.base_font_size)), max(i32(1), i32(config.minimum_size[1] * window.ui.base_font_size))) {
 		return false
 	}
 	window.renderer = sdl3.CreateRenderer(window.handle, nil)
@@ -75,10 +76,11 @@ create_window_resources :: proc(window: ^Window, config: Config) -> bool {
 		return false
 	}
 	window.pixel_density = max(f32(1), sdl3.GetWindowPixelDensity(window.handle))
+	window.font_unit_size = window.ui.base_font_size
 	for size in Text_Size {
-		font := ttf.OpenFont("/System/Library/Fonts/SFNS.ttf", text_size_points(size) * window.pixel_density)
+		font := ttf.OpenFont("/System/Library/Fonts/SFNS.ttf", text_size_units(size) * window.ui.base_font_size * window.pixel_density)
 		if font == nil {
-			font = ttf.OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", text_size_points(size) * window.pixel_density)
+			font = ttf.OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", text_size_units(size) * window.ui.base_font_size * window.pixel_density)
 		}
 		if font == nil {
 			return false
@@ -98,12 +100,15 @@ create_window_resources :: proc(window: ^Window, config: Config) -> bool {
 @(private="package")
 replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	config := Config{title = sdl3.GetWindowTitle(window.handle), flags = flags | {.HIDDEN}}
-	position: [2]i32
-	if !sdl3.GetWindowSize(window.handle, &config.size[0], &config.size[1]) ||
-		!sdl3.GetWindowMinimumSize(window.handle, &config.minimum_size[0], &config.minimum_size[1]) ||
+	position, size, minimum: [2]i32
+	if !sdl3.GetWindowSize(window.handle, &size[0], &size[1]) ||
+		!sdl3.GetWindowMinimumSize(window.handle, &minimum[0], &minimum[1]) ||
 		!sdl3.GetWindowPosition(window.handle, &position[0], &position[1]) {
 		return false
 	}
+	config.size = {f32(size[0]) / window.ui.base_font_size, f32(size[1]) / window.ui.base_font_size}
+	config.minimum_size = {f32(minimum[0]) / window.ui.base_font_size, f32(minimum[1]) / window.ui.base_font_size}
+
 	replacement := Window{
 		ui = window.ui,
 		viewport = window.viewport,
@@ -185,13 +190,13 @@ close_window :: proc(window: ^Window) {
 window_position :: proc(window: ^Window) -> [2]f32 {
 	x, y: i32
 	assert(sdl3.GetWindowPosition(window.handle, &x, &y))
-	return {f32(x), f32(y)}
+	return {f32(x) / window.ui.base_font_size, f32(y) / window.ui.base_font_size}
 }
 
 pointer_position :: proc(window: ^Window) -> [2]f32 {
 	mouse: [2]f32
 	_ = sdl3.GetGlobalMouseState(&mouse[0], &mouse[1])
-	return mouse - window_position(window)
+	return mouse / window.ui.base_font_size - window_position(window)
 }
 
 show_window :: proc(window: ^Window) -> bool {
@@ -237,4 +242,33 @@ set_window_flags :: proc(window: ^Window, flags: sdl3.WindowFlags) {
 	assert(window.handle != nil)
 	window.requested_flags = flags
 	window.pending_flags = true
+}
+
+// Native placement and size requests share the same UI units as layout/input.
+set_window_position :: proc(window: ^Window, position: [2]f32) -> bool {
+	return sdl3.SetWindowPosition(window.handle, i32(position[0] * window.ui.base_font_size), i32(position[1] * window.ui.base_font_size))
+}
+
+set_window_size :: proc(window: ^Window, size: [2]f32) -> bool {
+	if !sdl3.SetWindowSize(window.handle, i32(size[0] * window.ui.base_font_size), i32(size[1] * window.ui.base_font_size)) { return false }
+	sync_viewport(window)
+	return true
+}
+
+// The physical window stays put. More or fewer UI units fit inside it, and all
+// reactive layouts/content measurements immediately use the new base font size.
+set_base_font_size :: proc(ui: ^UI, logical_points: f32) {
+	assert(logical_points > 0)
+	ui.base_font_size = logical_points
+	for window in ui.windows {
+		sync_text_density(window)
+		sync_viewport(window)
+	}
+}
+
+@(private="package")
+sync_viewport :: proc(window: ^Window) {
+	w, h: i32
+	assert(sdl3.GetWindowSize(window.handle, &w, &h))
+	get_element(window.ui, window.viewport).pins = Pins{right = f32(w) / window.ui.base_font_size, bottom = f32(h) / window.ui.base_font_size}
 }

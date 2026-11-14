@@ -4,47 +4,72 @@ import fluid "../.."
 
 Rectangles :: struct {
 	scene: ^fluid.Scene,
-	stage, anchor, toggle: fluid.Element_ID,
+	navigation, stage, anchor, toggle, upper, lower, bar: fluid.Element_ID,
 	shifted: bool,
 }
 
 create_rectangles :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase)) {
 	page := &app.rectangles
+	page.navigation = app.sidebar
 	page.scene = fluid.create_scene(ui.window)
 	append(&entry.scenes, page.scene)
 	scene := page.scene
-	left := fluid.relative(app.sidebar, .Right, 36)
-	width := fluid.distance(app.sidebar, .Right, ui.window.viewport, .Right, -72)
-	page.stage = demo_surface(scene, {left, fluid.at(24)},
-		{width, fluid.relative(ui.window.viewport, .Height, -48)}, radius = 20)
-	page.toggle = fluid.button(scene,
-		{fluid.relative(page.stage, .Right, -124), fluid.relative(page.stage, .Top, 20)},
-		{fluid.at(104), fluid.at(36)}, "Move")
+	viewport := fluid.bounds(ui, ui.window.viewport)
+	navigation := fluid.bounds(ui, page.navigation)
+	stage := fluid.Pins{left = navigation.right + 2.25, top = 1.5, right = viewport.right - 2.25, bottom = viewport.bottom - 1.5}
+	page.stage = demo_surface(scene, stage, radius = 1.25)
+	page.toggle = fluid.button(scene, {
+		left = stage.right - 7.75, top = stage.top + 1.25,
+		right = stage.right - 1.25, bottom = stage.top + 3.5,
+	}, "Move")
 	fluid.on_press(ui, page.toggle, page, shift_anchor)
+	anchor := anchor_pins(stage, false)
+	page.anchor = demo_surface(scene, anchor, {41, 83, 75, 255}, radius = 0.875, shadow = 0.75)
+	fluid.set_style(ui, page.anchor, {radius = 0.875, border = {106, 179, 156, 255}, border_width = 0.0625, shadow = 0.75})
+	page.upper = demo_surface(scene, {
+		left = stage.right - 15.25, top = anchor.top, right = stage.right - 1.75, bottom = anchor.top + 3.5,
+	}, {29, 47, 53, 255}, radius = 0.625)
+	page.lower = demo_surface(scene, {
+		left = stage.right - 15.25, top = anchor.bottom - 3.5, right = stage.right - 1.75, bottom = anchor.bottom,
+	}, {42, 41, 53, 255}, radius = 0.625)
+	page.bar = demo_surface(scene, {
+		left = anchor.left, top = stage.bottom - 2.375, right = anchor.right, bottom = stage.bottom - 1.75,
+	}, MINT, radius = 0.3125)
+	fluid.set_style(ui, page.bar, {radius = 0.3125})
+	fluid.on_update(ui, page.stage, page, update_rectangles)
+}
 
-	// The anchor alone is animated. Every other position/size reads a live reference.
-	page.anchor = demo_surface(scene,
-		{fluid.relative(page.stage, .Left, 28), fluid.relative(page.stage, .Top, 100)},
-		{fluid.at(184), fluid.at(136)}, {41, 83, 75, 255}, radius = 14, shadow = 12)
-	fluid.set_style(ui, page.anchor, {radius = 14, border = {106, 179, 156, 255}, border_width = 1, shadow = 12})
-	// The far edge is independently attached to the stage, not to the source card.
-	right_x := fluid.relative(page.stage, .Right, -244)
-	_ = demo_surface(scene, {right_x, fluid.relative(page.anchor, .Top)},
-		{fluid.at(216), fluid.at(56)}, {29, 47, 53, 255}, radius = 10)
-	_ = demo_surface(scene, {right_x, fluid.relative(page.anchor, .Bottom, -56)},
-		{fluid.at(216), fluid.at(56)}, {42, 41, 53, 255}, radius = 10)
-	// A distant bar shares the anchor's width.
-	bar := demo_surface(scene,
-		{fluid.relative(page.stage, .Left, 28), fluid.relative(page.stage, .Bottom, -38)},
-		{fluid.relative(page.anchor, .Width), fluid.at(10)}, {143, 225, 196, 255}, radius = 5)
-	fluid.set_style(ui, bar, {radius = 5})
+anchor_pins :: proc(stage: fluid.Pins, shifted: bool) -> fluid.Pins {
+	left := stage.left + 1.75
+	top := stage.top + (shifted ? 12.5 : 6.25)
+	return {left = left, top = top, right = left + (shifted ? 14 : 11.5), bottom = top + 8.5}
+}
+
+update_rectangles :: proc(page: ^Rectangles, ui: ^fluid.UI, dt: f64) {
+	viewport := fluid.bounds(ui, ui.window.viewport)
+	navigation := fluid.bounds(ui, page.navigation)
+	stage := fluid.Pins{left = navigation.right + 2.25, top = 1.5, right = viewport.right - 2.25, bottom = viewport.bottom - 1.5}
+	fluid.set_target(ui, page.stage, stage)
+	fluid.set_target(ui, page.toggle, {
+		left = stage.right - 7.75, top = stage.top + 1.25, right = stage.right - 1.25, bottom = stage.top + 3.5,
+	})
+	fluid.set_target(ui, page.anchor, anchor_pins(stage, page.shifted))
+	anchor := fluid.bounds(ui, page.anchor)
+	fluid.set_target(ui, page.upper, {
+		left = stage.right - 15.25, top = anchor.top, right = stage.right - 1.75, bottom = anchor.top + 3.5,
+	})
+	fluid.set_target(ui, page.lower, {
+		left = stage.right - 15.25, top = anchor.bottom - 3.5, right = stage.right - 1.75, bottom = anchor.bottom,
+	})
+	fluid.set_target(ui, page.bar, {
+		left = stage.left + 1.75, top = stage.bottom - 2.375,
+		right = stage.left + 1.75 + fluid.width(anchor), bottom = stage.bottom - 1.75,
+	})
 }
 
 shift_anchor :: proc(page: ^Rectangles, ui: ^fluid.UI, id: fluid.Element_ID) {
 	page.shifted = !page.shifted
-	fluid.animate_to(ui, page.anchor,
-		{fluid.relative(page.stage, .Left, 28), fluid.relative(page.stage, .Top, page.shifted ? 200 : 100)},
-		{fluid.at(page.shifted ? 224 : 184), fluid.at(136)},
-		{duration = 0.65, sample = smooth_damp, progress = damp_progress})
+	stage := fluid.bounds(ui, page.stage)
+	fluid.animate_to(ui, page.anchor, anchor_pins(stage, page.shifted), {duration = 0.65, sample = smooth_damp, progress = damp_progress})
 	fluid.set_label(ui, id, page.shifted ? "Reset" : "Move")
 }

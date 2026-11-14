@@ -43,22 +43,10 @@ deactivate :: proc(scene: ^Scene) {
 	scene.active = false
 }
 
-// Freeze existing dependents before invalidating the ID and recycling its slot.
+// Invalidate the ID before recycling its slot. Other elements store values.
 remove :: proc(app: ^UI, id: Element_ID) {
 	assert(valid(app, id), "Invalid or expired element reference")
-	for &dependent in app.elements {
-		if !dependent.alive {
-			continue
-		}
-		space := coordinate_window(&dependent)
-		for axis in 0..<2 {
-			freeze_reference(app, &dependent.position[axis], id, space)
-			freeze_reference(app, &dependent.size[axis], id, space)
-		}
-	}
-	for &members in app.groups {
-		remove_id(&members, id)
-	}
+
 	element := get_element(app, id)
 	if element.owner != nil {
 		remove_id(&element.owner.members, id)
@@ -72,29 +60,7 @@ remove :: proc(app: ^UI, id: Element_ID) {
 	append(&app.free_elements, slot(id))
 }
 
-@(private="package")
-freeze_reference :: proc(app: ^UI, value: ^Value, id: Element_ID, space: ^Window) {
-	depends := false
-	switch source in value.source {
-	case Anchor:
-		depends = source.element == id
-	case Distance:
-		depends = source.from.element == id || source.to.element == id
-	case Maximum:
-		for member in app.groups[source.group] {
-			if member == id {
-				depends = true
-				break
-			}
-		}
-	case nil:
-	}
-	if depends {
-		value^ = at(read(app, value, space = space))
-	}
-}
-
-// Move the actual element, keeping its ID, references, and animation progress.
+// Move the actual element, keeping its ID and animation progress.
 // Literal positions and animation origins are rebased to preserve screen space.
 transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
 	assert(destination.ui == app && destination.window.handle != nil)
@@ -107,16 +73,8 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
 	}
 	if source.window != destination.window {
 		offset := window_position(source.window) - window_position(destination.window)
-		for axis in 0..<2 {
-			position := &element.position[axis]
-			anchor, anchored := position.source.(Anchor)
-			// Position anchors already translate between window coordinate spaces.
-			if !anchored || (anchor.attribute == .Width || anchor.attribute == .Height || anchor.attribute == .Content_Width) {
-				position.offset += offset[axis]
-			}
-		}
-		element.motion.from.x += offset[0]
-		element.motion.from.y += offset[1]
+		element.pins = translated(element.pins, offset)
+		element.motion.from = translated(element.motion.from, offset)
 		release_text(element)
 	}
 	context.allocator = virtual.arena_allocator(&app.storage)
@@ -176,20 +134,4 @@ remove_id :: proc(ids: ^[dynamic]Element_ID, id: Element_ID) {
 			return
 		}
 	}
-}
-
-group :: proc(app: ^UI) -> Group_ID {
-	context.allocator = virtual.arena_allocator(&app.storage)
-	id := Group_ID(len(app.groups))
-	append(&app.groups, make([dynamic]Element_ID))
-	return id
-}
-
-include :: proc(app: ^UI, group: Group_ID, element: Element_ID) {
-	for member in app.groups[group] {
-		if member == element {
-			return
-		}
-	}
-	append(&app.groups[group], element)
 }

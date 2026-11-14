@@ -7,21 +7,20 @@ Animation :: struct {
 }
 
 // A new request replaces the previous transition and its completion action.
-// Sampling stays lazy so relative destinations continue to follow live layout.
-animate_to :: proc(ui: ^UI, id: Element_ID, position, size: [2]Value, animation: Animation) {
+// set_target can update the numeric destination without restarting its clock.
+animate_to :: proc(ui: ^UI, id: Element_ID, pins: Pins, animation: Animation) {
 	assert(animation.duration > 0 && animation.sample != nil)
 	from := bounds(ui, id)
 	element := get_element(ui, id)
-	element.position = position
-	element.size = size
+	element.pins = checked_pins(pins)
 	element.motion_serial += 1
 	element.motion = Motion{from = from, animation = animation, frame = ui.frame}
 }
 
 // Explicitly preserve the current completion action when changing a destination.
-retarget :: proc(ui: ^UI, id: Element_ID, position, size: [2]Value, animation: Animation) {
+retarget :: proc(ui: ^UI, id: Element_ID, pins: Pins, animation: Animation) {
 	complete := get_element(ui, id).motion.complete
-	animate_to(ui, id, position, size, animation)
+	animate_to(ui, id, pins, animation)
 	get_element(ui, id).motion.complete = complete
 }
 

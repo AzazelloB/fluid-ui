@@ -11,8 +11,8 @@ Launch_Reveal :: struct {
 start_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) {
 	mouse := fluid.pointer_position(window)
 	r := fluid.bounds(window.ui, window.viewport)
-	if mouse[0] < 0 || mouse[0] >= r.w || mouse[1] < 0 || mouse[1] >= r.h {
-		mouse = {r.w / 2, r.h / 2}
+	if mouse[0] < 0 || mouse[0] >= fluid.width(r) || mouse[1] < 0 || mouse[1] >= fluid.height(r) {
+		mouse = {fluid.width(r) / 2, fluid.height(r) / 2}
 	}
 	reveal.origin = mouse
 	fluid.window_effect(window, 0.45, reveal, draw_launch_reveal, finish_launch_reveal)
@@ -24,10 +24,10 @@ finish_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) {
 
 draw_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window, t: f32) {
 	r := fluid.bounds(window.ui, window.viewport)
-	scale := window.pixel_density
+	scale := window.pixel_density * window.ui.base_font_size
 	center := reveal.origin * scale
-	dx := max(reveal.origin[0], r.w - reveal.origin[0]) * scale
-	dy := max(reveal.origin[1], r.h - reveal.origin[1]) * scale
+	dx := max(reveal.origin[0], fluid.width(r) - reveal.origin[0]) * scale
+	dy := max(reveal.origin[1], fluid.height(r) - reveal.origin[1]) * scale
 	diagonal := math.sqrt(dx * dx + dy * dy)
 	radius := diagonal * t * t * (3 - 2 * t)
 	outer := diagonal * 3 + 4

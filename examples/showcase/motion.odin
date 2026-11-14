@@ -9,20 +9,22 @@ damp_progress :: proc(elapsed, duration: f64) -> f32 {
 	return f32((1 - math.exp(-SPEED * time)) / (1 - math.exp(-SPEED * duration)))
 }
 
-smooth_damp :: proc(from, to: fluid.Rect, t: f32) -> fluid.Rect {
+smooth_damp :: proc(from, to: fluid.Pins, t: f32) -> fluid.Pins {
 	return {
-		from.x + (to.x - from.x) * t,
-		from.y + (to.y - from.y) * t,
-		from.w + (to.w - from.w) * t,
-		from.h + (to.h - from.h) * t,
+		from.left + (to.left - from.left) * t,
+		from.top + (to.top - from.top) * t,
+		from.right + (to.right - from.right) * t,
+		from.bottom + (to.bottom - from.bottom) * t,
 	}
 }
 
-arc :: proc(from, to: fluid.Rect, t: f32) -> fluid.Rect {
+arc :: proc(from, to: fluid.Pins, t: f32) -> fluid.Pins {
 	result := smooth_damp(from, to, t)
-	dx, dy := to.x - from.x, to.y - from.y
+	dx, dy := to.left - from.left, to.top - from.top
 	// A short retarget near the sidebar needs a smaller bend.
-	height := min(f32(96), math.sqrt(dx * dx + dy * dy) * 0.2)
-	result.y -= 4 * height * t * (1 - t)
+	height := min(f32(6), math.sqrt(dx * dx + dy * dy) * 0.2)
+	offset := 4 * height * t * (1 - t)
+	result.top -= offset
+	result.bottom -= offset
 	return result
 }

@@ -23,7 +23,7 @@ requests :: proc(app: ^UI) {
 			if window == nil || event.button.button != sdl3.BUTTON_LEFT {
 				continue
 			}
-			hit := hit_test(app, window, event.button.x, event.button.y)
+			hit := hit_test(app, window, event.button.x / app.base_font_size, event.button.y / app.base_font_size)
 			app.hovered = hit
 			app.pressed = -1
 			if hit >= 0 && get_element(app, Element_ID(hit)).kind == .Button {
@@ -33,26 +33,23 @@ requests :: proc(app: ^UI) {
 			if hit >= 0 && get_element(app, Element_ID(hit)).draggable {
 				id := Element_ID(hit)
 				r := bounds(app, id)
-				if get_element(app, id).drag_mode == .Independent {
-					// An independently movable element leaves its dock's references.
-					set_layout(app, id, {at(r.x), at(r.y)}, {at(r.w), at(r.h)})
-				}
+
 				app.drag.element = hit
 				app.drag.started = hit
-				app.drag.offset = {event.button.x - r.x, event.button.y - r.y}
+				app.drag.offset = {event.button.x / app.base_font_size - r.left, event.button.y / app.base_font_size - r.top}
 				bring_to_front(app, id)
 				_ = sdl3.CaptureMouse(true)
 			}
 		case .MOUSE_MOTION:
 			window := find_window(app, event.motion.windowID)
 			if window != nil {
-				app.hovered = hit_test(app, window, event.motion.x, event.motion.y)
+				app.hovered = hit_test(app, window, event.motion.x / app.base_font_size, event.motion.y / app.base_font_size)
 			}
 		case .MOUSE_BUTTON_UP:
 			if event.button.button == sdl3.BUTTON_LEFT {
 				window := find_window(app, event.button.windowID)
 				if window != nil && app.drag.element >= 0 {
-					move_drag(app, window_position(window) + [2]f32{event.button.x, event.button.y})
+					move_drag(app, window_position(window) + [2]f32{event.button.x, event.button.y} / app.base_font_size)
 				}
 				app.pressed = -1
 				end_drag(app)
@@ -73,7 +70,7 @@ requests :: proc(app: ^UI) {
 		case .WINDOW_RESIZED:
 			window := find_window(app, event.window.windowID)
 			if window != nil {
-				get_element(app, window.viewport)^.size = {at(f32(event.window.data1)), at(f32(event.window.data2))}
+				sync_viewport(window)
 			}
 		case .WINDOW_MOUSE_LEAVE:
 			app.hovered = -1
@@ -86,7 +83,7 @@ requests :: proc(app: ^UI) {
 	if app.drag.element >= 0 {
 		mouse: [2]f32
 		buttons := sdl3.GetGlobalMouseState(&mouse[0], &mouse[1])
-		move_drag(app, mouse)
+		move_drag(app, mouse / app.base_font_size)
 		if .LEFT not_in buttons {
 			end_drag(app)
 		}
@@ -95,12 +92,9 @@ requests :: proc(app: ^UI) {
 
 @(private="package")
 move_drag :: proc(app: ^UI, global_mouse: [2]f32) {
-	element := get_element(app, Element_ID(app.drag.element))
-	mouse := global_mouse - window_position(element.owner.window)
-	for axis in 0..<2 {
-		source, _ := resolve(app, &element.position[axis])
-		source.offset += mouse[axis] - app.drag.offset[axis] - read(app, &element.position[axis], space = coordinate_window(element))
-	}
+	mouse := global_mouse - window_position(element_window(app, Element_ID(app.drag.element)))
+	r := bounds(app, Element_ID(app.drag.element))
+	set_layout(app, Element_ID(app.drag.element), translated(r, mouse - app.drag.offset - [2]f32{r.left, r.top}))
 }
 
 @(private="package")
@@ -131,7 +125,7 @@ rebase_drag :: proc(app: ^UI, id: Element_ID) {
 		return
 	}
 	r := bounds(app, id)
-	app.drag.offset = pointer_position(element_window(app, id)) - [2]f32{r.x, r.y}
+	app.drag.offset = pointer_position(element_window(app, id)) - [2]f32{r.left, r.top}
 }
 
 // A press is reported on mouse-down, independent of where release occurs.

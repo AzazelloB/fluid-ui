@@ -38,12 +38,16 @@ set_selected :: proc(app: ^UI, id: Element_ID, selected: bool) {
 	get_element(app, id).selected = selected
 }
 
-set_layout :: proc(app: ^UI, id: Element_ID, position, size: [2]Value) {
+set_layout :: proc(app: ^UI, id: Element_ID, pins: Pins) {
 	element := get_element(app, id)
-	element.position = position
-	element.size = size
+	element.pins = checked_pins(pins)
 	element.motion_serial += 1
 	element.motion = {}
+}
+
+// Update numeric destination pins without restarting an in-flight animation.
+set_target :: proc(app: ^UI, id: Element_ID, pins: Pins) {
+	get_element(app, id).pins = checked_pins(pins)
 }
 
 element_window :: proc(app: ^UI, id: Element_ID) -> ^Window {

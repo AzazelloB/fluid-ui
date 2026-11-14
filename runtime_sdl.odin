@@ -19,7 +19,7 @@ UI :: struct {
 	drag:                              Drag,
 	elements:                          [dynamic]Element, // Stable registry indices; never reordered.
 	active:                            [dynamic]Element_ID, // Draw order and processing membership.
-	groups:                            [dynamic][dynamic]Element_ID,
+	base_font_size:                    f32, // Logical points per UI unit.
 	events:                            [dynamic]Element_ID, // Mouse-down presses in the current frame.
 	storage:                           virtual.Arena,
 	previous:                          u64,
@@ -28,15 +28,17 @@ UI :: struct {
 }
 
 Config :: struct {
+	base_font_size: f32, // init/run only; zero selects 16 logical points.
 	title:        cstring,
-	size:         [2]i32,
-	minimum_size: [2]i32,
+	size:         [2]f32,
+	minimum_size: [2]f32,
 	flags:        sdl3.WindowFlags,
 }
 
 init :: proc(app: ^UI, config: Config) -> bool {
 	app^ = UI{
 		running = true,
+		base_font_size = config.base_font_size > 0 ? config.base_font_size : 16,
 		hovered = -1,
 		pressed = -1,
 		drag = {element = -1, started = -1, released = -1},
@@ -55,7 +57,6 @@ init :: proc(app: ^UI, config: Config) -> bool {
 	context.allocator = virtual.arena_allocator(&app.storage)
 	app.elements = make([dynamic]Element, 0, 64)
 	app.active = make([dynamic]Element_ID, 0, 64)
-	app.groups = make([dynamic][dynamic]Element_ID)
 	app.events = make([dynamic]Element_ID)
 	app.windows = make([dynamic]^Window)
 	app.free_windows = make([dynamic]^Window)

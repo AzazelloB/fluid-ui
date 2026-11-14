@@ -16,8 +16,11 @@ draw :: proc(app: ^UI, window: ^Window) {
 			continue
 		}
 		r := bounds(app, id)
-		scale := window.pixel_density
-		pixels := Rect{r.x * scale, r.y * scale, r.w * scale, r.h * scale}
+		if width(r) <= 0 || height(r) <= 0 {
+			continue
+		}
+		scale := window.pixel_density * app.base_font_size
+		pixels := sdl3.FRect{r.left * scale, r.top * scale, width(r) * scale, height(r) * scale}
 		if element.kind != .Label && pixels.w > 0 && pixels.h > 0 {
 			style := element.style
 			radius := style.radius * scale
@@ -25,7 +28,7 @@ draw :: proc(app: ^UI, window: ^Window) {
 				// Low-opacity layers soften the silhouette without render targets.
 				for i := 8; i > 0; i -= 1 {
 					spread := f32(i) * style.shadow * scale / 8
-					shadow := Rect{pixels.x - spread, pixels.y - spread + style.shadow * scale * 0.4,
+					shadow := sdl3.FRect{pixels.x - spread, pixels.y - spread + style.shadow * scale * 0.4,
 						pixels.w + spread * 2, pixels.h + spread * 2}
 					rounded_fill(renderer, shadow, radius + spread, {0, 0, 0, 5})
 				}
@@ -34,7 +37,7 @@ draw :: proc(app: ^UI, window: ^Window) {
 			border := min(style.border_width * scale, min(pixels.w, pixels.h) / 2)
 			if border > 0 && style.border.a > 0 {
 				rounded_fill(renderer, pixels, radius, style.border)
-				inner := Rect{pixels.x + border, pixels.y + border, pixels.w - border * 2, pixels.h - border * 2}
+				inner := sdl3.FRect{pixels.x + border, pixels.y + border, pixels.w - border * 2, pixels.h - border * 2}
 				rounded_fill(renderer, inner, max(f32(0), radius - border), color)
 			} else {
 				rounded_fill(renderer, pixels, radius, color)
@@ -49,11 +52,11 @@ draw :: proc(app: ^UI, window: ^Window) {
 // Convex rounded silhouette with a one-physical-pixel alpha fringe. No shaders,
 // textures, or per-frame heap allocation; density scaling happens at the caller.
 @(private="package")
-rounded_fill :: proc(renderer: ^sdl3.Renderer, rect: Rect, radius: f32, color: Color) {
+rounded_fill :: proc(renderer: ^sdl3.Renderer, rect: sdl3.FRect, requested_radius: f32, color: Color) {
 	if rect.w <= 0 || rect.h <= 0 || color.a == 0 {
 		return
 	}
-	radius := clamp(radius, 0, min(rect.w, rect.h) / 2)
+	radius := clamp(requested_radius, 0, min(rect.w, rect.h) / 2)
 	if radius == 0 {
 		sdl3.SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a)
 		pixels := rect

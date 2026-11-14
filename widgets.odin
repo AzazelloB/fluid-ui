@@ -2,27 +2,26 @@ package fluid
 
 import "vendor:sdl3"
 
-panel :: proc(scene: ^Scene, position, size: [2]Value, color: Color) -> Element_ID {
-	return add_element(scene, Element{position = position, size = size, color = color})
+panel :: proc(scene: ^Scene, pins: Pins, color: Color) -> Element_ID {
+	return add_element(scene, Element{pins = checked_pins(pins), color = color})
 }
 
-button :: proc(scene: ^Scene, position, size: [2]Value, label: string) -> Element_ID {
+button :: proc(scene: ^Scene, pins: Pins, label: string) -> Element_ID {
 	return add_element(scene, Element{
-		kind = .Button, position = position, size = size, label = label,
+		kind = .Button, pins = checked_pins(pins), label = label,
 		color = {35, 44, 57, 255},
-		style = {radius = 10, border = {64, 77, 94, 255}, border_width = 1},
+		style = {radius = 0.625, border = {64, 77, 94, 255}, border_width = 0.0625},
 	})
 }
 
-draggable_panel :: proc(scene: ^Scene, position, size: [2]Value, color: Color, mode: Drag_Mode = .References) -> Element_ID {
-	id := panel(scene, position, size, color)
+draggable_panel :: proc(scene: ^Scene, pins: Pins, color: Color) -> Element_ID {
+	id := panel(scene, pins, color)
 	scene.ui.elements[slot(Element_ID(id))].draggable = true
-	scene.ui.elements[slot(Element_ID(id))].drag_mode = mode
 	return id
 }
 
-label :: proc(scene: ^Scene, position, size: [2]Value, text: string) -> Element_ID {
-	return add_element(scene, Element{kind = .Label, position = position, size = size, label = text})
+label :: proc(scene: ^Scene, pins: Pins, text: string) -> Element_ID {
+	return add_element(scene, Element{kind = .Label, pins = checked_pins(pins), label = text})
 }
 
 @(private="package")
