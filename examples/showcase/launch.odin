@@ -24,7 +24,7 @@ finish_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) {
 
 draw_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window, t: f32) {
 	r := fluid.bounds(window.ui, window.viewport)
-	scale := window.pixel_density * window.ui.base_font_size
+	scale := window.pixel_density * fluid.UI_UNIT_POINTS
 	center := reveal.origin * scale
 	dx := max(reveal.origin[0], fluid.width(r) - reveal.origin[0]) * scale
 	dy := max(reveal.origin[1], fluid.height(r) - reveal.origin[1]) * scale

@@ -3,6 +3,8 @@ package fluid
 import "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
+UI_UNIT_POINTS :: f32(16)
+
 Text_Size :: enum {Body, Caption, Heading, Title}
 text_size_units :: proc(size: Text_Size) -> f32 {
 	switch size {
@@ -39,13 +41,12 @@ Element_ID :: distinct int
 
 Motion_Sample :: proc(from, to: Pins, progress: f32) -> Pins
 
-// Transition clocks and callbacks are owned by Fluid, alongside their target.
+// The transition clock lives alongside its target.
 Motion :: struct {
 	from:      Pins,
 	elapsed:   f64,
 	progress:  f32,
 	animation: Animation,
-	complete:  Element_Callback,
 	frame:     u64,
 }
 
@@ -69,7 +70,6 @@ Element :: struct {
 	pointer:       Pointer_Behavior,
 	owner:         ^Scene,
 	motion:        Motion,
-	motion_serial: u64,
 	press:         Element_Callback,
 	update:        Update_Callback,
 }

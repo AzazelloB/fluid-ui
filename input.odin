@@ -69,7 +69,7 @@ requests :: proc(app: ^UI) {
 			if window == nil || event.button.button != sdl3.BUTTON_LEFT {
 				continue
 			}
-			hit := hit_test(app, window, event.button.x / app.base_font_size, event.button.y / app.base_font_size)
+			hit := hit_test(app, window, event.button.x / UI_UNIT_POINTS, event.button.y / UI_UNIT_POINTS)
 			app.pressed = -1
 			if hit < 0 {
 				continue
@@ -85,7 +85,7 @@ requests :: proc(app: ^UI) {
 
 				app.drag.element = hit
 				app.drag.started = hit
-				app.drag.offset = {event.button.x / app.base_font_size - r.left, event.button.y / app.base_font_size - r.top}
+				app.drag.offset = {event.button.x / UI_UNIT_POINTS - r.left, event.button.y / UI_UNIT_POINTS - r.top}
 				bring_to_front(app, id)
 				_ = sdl3.CaptureMouse(true)
 			}
@@ -93,7 +93,7 @@ requests :: proc(app: ^UI) {
 			if event.button.button == sdl3.BUTTON_LEFT {
 				window := find_window(app, event.button.windowID)
 				if window != nil && app.drag.element >= 0 {
-					move_drag(app, window_position(window) + [2]f32{event.button.x, event.button.y} / app.base_font_size)
+					move_drag(app, window_position(window) + [2]f32{event.button.x, event.button.y} / UI_UNIT_POINTS)
 				}
 				app.pressed = -1
 				end_drag(app)
@@ -124,7 +124,7 @@ requests :: proc(app: ^UI) {
 	if app.drag.element >= 0 {
 		mouse: [2]f32
 		buttons := sdl3.GetGlobalMouseState(&mouse[0], &mouse[1])
-		move_drag(app, mouse / app.base_font_size)
+		move_drag(app, mouse / UI_UNIT_POINTS)
 		if .LEFT not_in buttons {
 			end_drag(app)
 		}
@@ -167,17 +167,4 @@ rebase_drag :: proc(app: ^UI, id: Element_ID) {
 	}
 	r := bounds(app, id)
 	app.drag.offset = pointer_position(element_window(app, id)) - [2]f32{r.left, r.top}
-}
-
-// A press is reported on mouse-down, independent of where release occurs.
-pressed :: proc(app: ^UI, id: Element_ID) -> bool {
-	if !is_active(app, id) {
-		return false
-	}
-	for event in app.events {
-		if event == id {
-			return true
-		}
-	}
-	return false
 }

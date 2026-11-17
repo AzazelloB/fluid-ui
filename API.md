@@ -1,14 +1,9 @@
 # Units and geometry
 
-All public lengths are plain `f32` values in UI units. One UI unit equals the
-base font size, initially 16 logical points. Pins, padding, radii, text
-measurements, window sizes/positions, and pointer coordinates use that unit.
-Display density is handled at the SDL boundary.
-
-Set `Config.base_font_size` in `init`/`run`, or use
-`set_base_font_size(ui, logical_points)` later. The base size is shared by all
-windows. Changing it keeps native window sizes unchanged, so their available
-size in UI units changes.
+All public lengths are plain `f32` values in UI units. One UI unit equals
+16 logical points (`UI_UNIT_POINTS`). Pins, radii, text measurements, window
+sizes and positions, and pointer coordinates use that unit. Display density is
+handled at the SDL boundary.
 
 ## Pass values
 
@@ -37,8 +32,6 @@ Non-finite pins assert.
 
 `width(pins)` and `height(pins)` return nonnegative dimensions.
 `translated(pins, {dx, dy})` moves both corners without changing size.
-`content_size(ui, id)` measures an element's full text in UI units, using its
-current width when wrapping is enabled.
 
 `set_text_style` accepts regular or bold weight and left, center, or right
 alignment. `set_text_wrap(ui, id)` lays text out from the top of its bounds,
@@ -53,10 +46,8 @@ or pass a wrap width to `measure_text` to measure the full block.
   to the supplied destination.
 - `set_target(ui, id, pins)` updates the destination without restarting the
   animation. Without an animation, the new pins take effect immediately.
-- `retarget(ui, id, pins, animation)` starts a replacement transition while
-  preserving its completion callback.
-- `bounds(ui, id)` reads the visible pins; `bounds(ui, id, target = true)` reads
-  the destination pins. Animation samplers receive and return `Pins`.
+- `bounds(ui, id)` reads the visible pins. Animation samplers receive and
+  return `Pins`.
 
 Dragging moves the element's numeric pins. Other elements move with it only if
 application code updates them. Removing an element invalidates its ID; other
@@ -78,8 +69,7 @@ Set `Style.hover_border` to draw a different border color while hovered.
 
 ## Windows
 
-Bounds and pointer coordinates are window-local. `bounds_in(ui, id, window)`
-converts to another window's coordinates, or desktop coordinates for `nil`.
+Bounds and pointer coordinates are window-local.
 `transfer` preserves the element ID and animation progress, translating its
 pins and animation origin to preserve desktop position.
 

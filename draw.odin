@@ -19,7 +19,7 @@ draw :: proc(app: ^UI, window: ^Window) {
 		if width(r) <= 0 || height(r) <= 0 {
 			continue
 		}
-		scale := window.pixel_density * app.base_font_size
+		scale := window.pixel_density * UI_UNIT_POINTS
 		pixels := sdl3.FRect{r.left * scale, r.top * scale, width(r) * scale, height(r) * scale}
 		if element.kind != .Label && pixels.w > 0 && pixels.h > 0 {
 			style := element.style

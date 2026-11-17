@@ -43,7 +43,6 @@ set_selected :: proc(app: ^UI, id: Element_ID, selected: bool) {
 set_layout :: proc(app: ^UI, id: Element_ID, pins: Pins) {
 	element := get_element(app, id)
 	element.pins = checked_pins(pins)
-	element.motion_serial += 1
 	element.motion = {}
 }
 

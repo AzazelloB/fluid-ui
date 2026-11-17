@@ -56,8 +56,6 @@ update_navigation :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	width := navigation_width(app, ui)
 	fluid.set_target(ui, app.sidebar, {right = width, bottom = viewport.bottom})
 	for page, index in app.pages.entries {
-		if tab, bound := page.tab.?; bound {
-			fluid.set_target(ui, tab, tab_pins(width, index))
-		}
+		fluid.set_target(ui, page.tab, tab_pins(width, index))
 	}
 }

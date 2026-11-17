@@ -32,10 +32,6 @@ on_press :: proc(ui: ^UI, id: Element_ID, owner: ^$Owner, run: proc(owner: ^Owne
 	get_element(ui, id).press = bind_element(ui, owner, run)
 }
 
-clear_press :: proc(ui: ^UI, id: Element_ID) {
-	get_element(ui, id).press = {}
-}
-
 @(private="package")
 Update_Callback :: struct {
 	data: rawptr,
@@ -58,10 +54,6 @@ on_update :: proc(ui: ^UI, id: Element_ID, owner: ^$Owner, run: proc(owner: ^Own
 		binding := cast(^Update_Binding(Owner))data
 		binding.run(binding.owner, ui, dt)
 	}}
-}
-
-clear_update :: proc(ui: ^UI, id: Element_ID) {
-	get_element(ui, id).update = {}
 }
 
 @(private="package")

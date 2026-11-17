@@ -3,12 +3,12 @@ package fluid
 import virtual "core:mem/virtual"
 
 // Pages own activation and lazy creation, not navigation layout or demo state.
-// Define the fixed list once; bind any button as a page's tab.
+// Define the fixed list and bind every tab before opening the first page.
 Page :: struct($Owner: typeid) {
 	title:   string,
 	create:  proc(owner: ^Owner, ui: ^UI, page: ^Page(Owner)),
 	leave:   proc(owner: ^Owner, ui: ^UI),
-	tab:     Maybe(Element_ID),
+	tab:     Element_ID,
 	scenes:  [dynamic]^Scene,
 	created: bool,
 }
@@ -49,9 +49,7 @@ open_page :: proc(pages: ^Page_Set($Owner), index: int) {
 		for scene in page.scenes {
 			deactivate(scene)
 		}
-		if tab, bound := page.tab.?; bound {
-			set_selected(ui, tab, false)
-		}
+		set_selected(ui, page.tab, false)
 	}
 	page := &pages.entries[index]
 	if !page.created {
@@ -63,15 +61,13 @@ open_page :: proc(pages: ^Page_Set($Owner), index: int) {
 		activate(scene)
 	}
 	pages.current = index
-	if tab, bound := page.tab.?; bound {
-		set_selected(ui, tab, true)
-	}
+	set_selected(ui, page.tab, true)
 }
 
 @(private="package")
 select_page_tab :: proc(pages: ^Page_Set($Owner), ui: ^UI, id: Element_ID) {
 	for page, index in pages.entries {
-		if tab, bound := page.tab.?; bound && tab == id {
+		if page.tab == id {
 			open_page(pages, index)
 			return
 		}

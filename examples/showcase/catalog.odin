@@ -192,9 +192,8 @@ layout_catalog_art :: proc(ui: ^fluid.UI, card: ^Catalog_Card, layout: ^[Catalog
 
 morph_catalog_card :: proc(grid, detail: [Catalog_Part]fluid.Pins, reveal, progress: f32) -> [Catalog_Part]fluid.Pins {
 	layout: [Catalog_Part]fluid.Pins
-	for part in Catalog_Part {
-		layout[part] = smooth_damp(grid[part], detail[part], progress)
-	}
+	layout[.Surface] = smooth_damp(grid[.Surface], detail[.Surface], progress)
+	layout[.Backdrop] = smooth_damp(grid[.Backdrop], detail[.Backdrop], progress)
 	// The labels travel below the artwork, then rise beside its right edge.
 	around := catalog_curve(clamp(reveal / 0.56, 0, 1))
 	up := catalog_curve(clamp((reveal - 0.5) / 0.5, 0, 1))
@@ -203,7 +202,7 @@ morph_catalog_card :: proc(grid, detail: [Catalog_Part]fluid.Pins, reveal, progr
 	to_edge := detail[.Name].left - detail[.Backdrop].right
 	x := layout[.Backdrop].right + from_edge + (to_edge - from_edge) * around
 	y := grid[.Name].top + (detail[.Name].top - grid[.Name].top) * up
-	paragraph := layout[.Description]
+	paragraph := smooth_damp(grid[.Description], detail[.Description], progress)
 	w := min(fluid.width(paragraph), layout[.Surface].right - x - CATALOG_INSET)
 	preview_height := fluid.height(grid[.Description])
 	height := preview_height + (fluid.height(detail[.Description]) - preview_height) * up
