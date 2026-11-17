@@ -21,7 +21,6 @@ smooth_damp :: proc(from, to: fluid.Pins, t: f32) -> fluid.Pins {
 arc :: proc(from, to: fluid.Pins, t: f32) -> fluid.Pins {
 	result := smooth_damp(from, to, t)
 	dx, dy := to.left - from.left, to.top - from.top
-	// A short retarget near the sidebar needs a smaller bend.
 	height := min(f32(6), math.sqrt(dx * dx + dy * dy) * 0.2)
 	offset := 4 * height * t * (1 - t)
 	result.top -= offset

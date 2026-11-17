@@ -72,7 +72,7 @@ dispatch_behavior :: proc(ui: ^UI, dt: f64) {
 	events := make([]Element_ID, len(ui.events), context.temp_allocator)
 	copy(events, ui.events[:])
 	for id in events {
-		if !valid(ui, id) || !is_active(ui, id) {
+		if !is_active(ui, id) {
 			continue
 		}
 		callback := get_element(ui, id).press
@@ -84,7 +84,7 @@ dispatch_behavior :: proc(ui: ^UI, dt: f64) {
 		}
 	}
 	for id in active {
-		if !valid(ui, id) || !is_active(ui, id) {
+		if !is_active(ui, id) {
 			continue
 		}
 		callback := get_element(ui, id).update

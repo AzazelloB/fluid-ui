@@ -43,10 +43,8 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 		append(&app.free_windows, window)
 		return nil
 	}
-	w, h: i32
-	assert(sdl3.GetWindowSize(window.handle, &w, &h))
-	// Viewport geometry, not a drawable or a parent.
-	window.viewport = register_element(app, Element{space = window, pins = Pins{right = f32(w) / app.base_font_size, bottom = f32(h) / app.base_font_size}})
+	window.viewport = register_element(app, Element{space = window})
+	sync_viewport(window)
 	append(&app.windows, window)
 	return window
 }
@@ -127,23 +125,15 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	sync_text_density(&replacement)
 
 	app := window.ui
-	// Cached text belongs to the old renderer, including text in inactive scenes.
-	for scene in window.scenes {
-		for id in scene.members {
-			release_text(get_element(app, id))
-		}
-	}
+	release_window_text(window)
 	previous := window^
 	window^ = replacement
-	present_window(window)
-	if .HIDDEN not_in sdl3.GetWindowFlags(previous.handle) && !show_window(window) {
-		for scene in window.scenes {
-			for id in scene.members {
-				release_text(get_element(app, id))
-			}
-		}
-		window^ = previous
+	if .HIDDEN in sdl3.GetWindowFlags(previous.handle) {
+		present_window(window)
+	} else if !show_window(window) {
+		release_window_text(window)
 		release_window_resources(&replacement)
+		window^ = previous
 		return false
 	}
 	// Present again after showing: some backends skip hidden-window presentation.
@@ -165,12 +155,11 @@ close_window :: proc(window: ^Window) {
 	}
 	app := window.ui
 	for scene in window.scenes {
-		deactivate(scene)
 		for len(scene.members) > 0 {
 			remove(app, scene.members[len(scene.members) - 1])
 		}
 	}
-	window.effect = {}
+	cancel_window_effect(window)
 	window.pending_flags = false
 	remove(app, window.viewport)
 	virtual.arena_destroy(&window.storage)
@@ -185,6 +174,15 @@ close_window :: proc(window: ^Window) {
 		app.running = false
 	}
 	append(&app.free_windows, window)
+}
+
+@(private="package")
+release_window_text :: proc(window: ^Window) {
+	for scene in window.scenes {
+		for id in scene.members {
+			release_text(get_element(window.ui, id))
+		}
+	}
 }
 
 window_position :: proc(window: ^Window) -> [2]f32 {

@@ -18,9 +18,9 @@ demo_text :: proc(scene: ^fluid.Scene, pins: fluid.Pins, text: string,
 }
 
 demo_surface :: proc(scene: ^fluid.Scene, pins: fluid.Pins, color: fluid.Color = SURFACE,
-	radius: f32 = 1, shadow: f32 = 0,
+	radius: f32 = 1,
 ) -> fluid.Element_ID {
 	id := fluid.panel(scene, pins, color)
-	fluid.set_style(scene.ui, id, {radius = radius, border = EDGE, border_width = 0.0625, shadow = shadow})
+	fluid.set_style(scene.ui, id, {radius = radius, border = EDGE, border_width = 0.0625})
 	return id
 }

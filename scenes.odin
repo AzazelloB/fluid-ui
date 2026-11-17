@@ -28,9 +28,7 @@ activate :: proc(scene: ^Scene) {
 		return
 	}
 	scene.active = true
-	for id in scene.members {
-		activate_element(scene.ui, id)
-	}
+	append(&scene.ui.active, ..scene.members[:])
 }
 
 deactivate :: proc(scene: ^Scene) {
@@ -45,12 +43,9 @@ deactivate :: proc(scene: ^Scene) {
 
 // Invalidate the ID before recycling its slot. Other elements store values.
 remove :: proc(app: ^UI, id: Element_ID) {
-	assert(valid(app, id), "Invalid or expired element reference")
-
 	element := get_element(app, id)
 	if element.owner != nil {
 		remove_id(&element.owner.members, id)
-		element.owner = nil
 	}
 	deactivate_element(app, id)
 	remove_id(&app.events, id)
@@ -81,27 +76,19 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
 	remove_id(&source.members, id)
 	append(&destination.members, id)
 	element.owner = destination
-	if destination.active {
-		activate_element(app, id)
-	} else {
+	if source.active && !destination.active {
 		deactivate_element(app, id)
+	} else if !source.active && destination.active {
+		append(&app.active, id)
 	}
 }
 
 is_active :: proc(app: ^UI, id: Element_ID) -> bool {
-	for active in app.active {
-		if active == id {
-			return true
-		}
+	if !valid(app, id) {
+		return false
 	}
-	return false
-}
-
-@(private="package")
-activate_element :: proc(app: ^UI, id: Element_ID) {
-	if !is_active(app, id) {
-		append(&app.active, id)
-	}
+	scene := app.elements[slot(id)].owner
+	return scene != nil && scene.active
 }
 
 @(private="package")

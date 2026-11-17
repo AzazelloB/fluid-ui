@@ -7,7 +7,6 @@ Showcase :: struct {
 	pages:         fluid.Page_Set(Showcase),
 	navigation:    ^fluid.Scene,
 	sidebar:       fluid.Element_ID,
-	tabs:          [dynamic]fluid.Element_ID,
 	rectangles:    Rectangles,
 	conversations: Conversations,
 	docking:       Docking,
@@ -26,17 +25,19 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	viewport := fluid.bounds(ui, ui.window.viewport)
 	width := navigation_width(app, ui)
 	app.sidebar = fluid.panel(app.navigation, {right = width, bottom = viewport.bottom}, {21, 29, 40, 255})
-	app.tabs = make([dynamic]fluid.Element_ID)
-	for &page, index in app.pages.entries {
-		top := 1.5 + f32(index) * 3.375
-		tab := fluid.button(app.navigation, {left = 0.75, top = top, right = width - 0.75, bottom = top + 2.875}, page.title)
+	for page, index in app.pages.entries {
+		tab := fluid.button(app.navigation, tab_pins(width, index), page.title)
 		fluid.set_text_style(ui, tab, .Body, INK)
 		fluid.bind_page_tab(&app.pages, index, tab)
-		append(&app.tabs, tab)
 	}
 	fluid.on_update(ui, app.sidebar, app, update_navigation)
 	fluid.activate(app.navigation)
 	fluid.open_page(&app.pages, 0)
+}
+
+tab_pins :: proc(width: f32, index: int) -> fluid.Pins {
+	top := 1.5 + f32(index) * 3.375
+	return {left = 0.75, top = top, right = width - 0.75, bottom = top + 2.875}
 }
 
 navigation_width :: proc(app: ^Showcase, ui: ^fluid.UI) -> f32 {
@@ -52,8 +53,9 @@ update_navigation :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	viewport := fluid.bounds(ui, ui.window.viewport)
 	width := navigation_width(app, ui)
 	fluid.set_target(ui, app.sidebar, {right = width, bottom = viewport.bottom})
-	for tab, index in app.tabs {
-		top := 1.5 + f32(index) * 3.375
-		fluid.set_target(ui, tab, {left = 0.75, top = top, right = width - 0.75, bottom = top + 2.875})
+	for page, index in app.pages.entries {
+		if tab, bound := page.tab.?; bound {
+			fluid.set_target(ui, tab, tab_pins(width, index))
+		}
 	}
 }

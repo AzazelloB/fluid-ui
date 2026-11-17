@@ -59,7 +59,6 @@ Element :: struct {
 	text_align:    Text_Align,
 	text_color:    Color,
 	text:          ^ttf.Text,
-	text_label:    string,
 	selected:      bool,
 	draggable:     bool,
 	owner:         ^Scene,

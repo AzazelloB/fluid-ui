@@ -21,7 +21,20 @@ sync_text_density :: proc(window: ^Window) {
 measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body) -> (f32, f32) {
 	pixel_width, pixel_height: i32
 	assert(ttf.GetStringSize(window.fonts[size], raw_data(label), len(label), &pixel_width, &pixel_height))
-	return f32(pixel_width) / (window.pixel_density * window.ui.base_font_size), f32(pixel_height) / (window.pixel_density * window.ui.base_font_size)
+	scale := window.pixel_density * window.ui.base_font_size
+	return f32(pixel_width) / scale, f32(pixel_height) / scale
+}
+
+@(private="package")
+update_cached_label :: proc(element: ^Element) {
+	if element.text == nil {
+		return
+	}
+	if len(element.label) == 0 {
+		release_text(element)
+		return
+	}
+	assert(ttf.SetTextString(element.text, raw_data(element.label), len(element.label)))
 }
 
 @(private="package")
@@ -29,10 +42,6 @@ draw_label :: proc(window: ^Window, element: ^Element, rect: Pins) {
 	if element.text == nil {
 		element.text = ttf.CreateText(window.text_engine, window.fonts[element.text_size], raw_data(element.label), len(element.label))
 		assert(element.text != nil)
-		element.text_label = element.label
-	} else if element.label != element.text_label {
-		assert(ttf.SetTextString(element.text, raw_data(element.label), len(element.label)))
-		element.text_label = element.label
 	}
 	pixel_width, pixel_height: i32
 	assert(ttf.GetTextSize(element.text, &pixel_width, &pixel_height))
@@ -53,5 +62,4 @@ release_text :: proc(element: ^Element) {
 		ttf.DestroyText(element.text)
 	}
 	element.text = nil
-	element.text_label = ""
 }

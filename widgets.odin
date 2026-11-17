@@ -15,9 +15,7 @@ button :: proc(scene: ^Scene, pins: Pins, label: string) -> Element_ID {
 }
 
 draggable_panel :: proc(scene: ^Scene, pins: Pins, color: Color) -> Element_ID {
-	id := panel(scene, pins, color)
-	scene.ui.elements[slot(Element_ID(id))].draggable = true
-	return id
+	return add_element(scene, Element{pins = checked_pins(pins), color = color, draggable = true})
 }
 
 label :: proc(scene: ^Scene, pins: Pins, text: string) -> Element_ID {

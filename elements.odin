@@ -16,18 +16,20 @@ add_element :: proc(scene: ^Scene, definition: Element) -> Element_ID {
 	id := register_element(app, element)
 	append(&scene.members, id)
 	if scene.active {
-		activate_element(app, id)
+		append(&app.active, id)
 	}
 	return id
 }
 
 // Retains a copy using UI storage, even if text came from a temporary allocator.
 set_label :: proc(app: ^UI, id: Element_ID, text: string) {
-	if get_element(app, id).label == text {
+	element := get_element(app, id)
+	if element.label == text {
 		return
 	}
 	context.allocator = virtual.arena_allocator(&app.storage)
-	get_element(app, id).label = strings.clone(text)
+	element.label = strings.clone(text)
+	update_cached_label(element)
 }
 
 set_color :: proc(app: ^UI, id: Element_ID, color: Color) {
