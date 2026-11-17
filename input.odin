@@ -2,10 +2,13 @@ package fluid
 
 import "vendor:sdl3"
 
+@(private="package")
+NO_ELEMENT :: Element_ID(-1)
+
 Drag :: struct {
-	element:           int,
+	element:           Element_ID,
 	offset:            [2]f32,
-	started, released: int, // Current-frame notifications, including a quick down/up.
+	started, released: Element_ID, // Current-frame notifications, including a quick down/up.
 }
 
 set_pointer_behavior :: proc(app: ^UI, id: Element_ID, behavior: Pointer_Behavior) {
@@ -18,7 +21,7 @@ accepts_press :: proc(element: ^Element) -> bool {
 }
 
 @(private="package")
-hit_test :: proc(app: ^UI, window: ^Window, x, y: f32) -> int {
+hit_test :: proc(app: ^UI, window: ^Window, point: [2]f32) -> Element_ID {
 	for i := len(app.active) - 1; i >= 0; i -= 1 {
 		id := app.active[i]
 		element := get_element(app, id)
@@ -28,17 +31,16 @@ hit_test :: proc(app: ^UI, window: ^Window, x, y: f32) -> int {
 		if element.pointer == .Auto && !element.draggable && !accepts_press(element) {
 			continue
 		}
-		r := bounds(app, id)
-		if x >= r.left && x < r.right && y >= r.top && y < r.bottom {
-			return element.pointer == .Block ? -1 : int(id)
+		if contains(element_bounds(element), point) {
+			return element.pointer == .Block ? NO_ELEMENT : id
 		}
 	}
-	return -1
+	return NO_ELEMENT
 }
 
 @(private="package")
 refresh_hover :: proc(app: ^UI) {
-	app.hovered = -1
+	app.hovered = NO_ELEMENT
 	focus := sdl3.GetMouseFocus()
 	if focus == nil {
 		return
@@ -49,8 +51,30 @@ refresh_hover :: proc(app: ^UI) {
 	}
 	mouse := pointer_position(window)
 	viewport := bounds(app, window.viewport)
-	if mouse[0] >= 0 && mouse[0] < viewport.right && mouse[1] >= 0 && mouse[1] < viewport.bottom {
-		app.hovered = hit_test(app, window, mouse[0], mouse[1])
+	if contains(viewport, mouse) {
+		app.hovered = hit_test(app, window, mouse)
+	}
+}
+
+@(private="package")
+press_at :: proc(app: ^UI, window: ^Window, point: [2]f32) {
+	id := hit_test(app, window, point)
+	app.pressed = NO_ELEMENT
+	if id == NO_ELEMENT {
+		return
+	}
+	element := get_element(app, id)
+	if accepts_press(element) {
+		app.pressed = id
+		append(&app.events, id)
+	}
+	if element.draggable {
+		r := element_bounds(element)
+		app.drag.element = id
+		app.drag.started = id
+		app.drag.offset = point - [2]f32{r.left, r.top}
+		bring_to_front(app, id)
+		_ = sdl3.CaptureMouse(true)
 	}
 }
 
@@ -69,33 +93,14 @@ requests :: proc(app: ^UI) {
 			if window == nil || event.button.button != sdl3.BUTTON_LEFT {
 				continue
 			}
-			hit := hit_test(app, window, event.button.x / UI_UNIT_POINTS, event.button.y / UI_UNIT_POINTS)
-			app.pressed = -1
-			if hit < 0 {
-				continue
-			}
-			element := get_element(app, Element_ID(hit))
-			if accepts_press(element) {
-				app.pressed = hit
-				append(&app.events, Element_ID(hit))
-			}
-			if element.draggable {
-				id := Element_ID(hit)
-				r := bounds(app, id)
-
-				app.drag.element = hit
-				app.drag.started = hit
-				app.drag.offset = {event.button.x / UI_UNIT_POINTS - r.left, event.button.y / UI_UNIT_POINTS - r.top}
-				bring_to_front(app, id)
-				_ = sdl3.CaptureMouse(true)
-			}
+			press_at(app, window, [2]f32{event.button.x, event.button.y} / UI_UNIT_POINTS)
 		case .MOUSE_BUTTON_UP:
 			if event.button.button == sdl3.BUTTON_LEFT {
 				window := find_window(app, event.button.windowID)
-				if window != nil && app.drag.element >= 0 {
+				if window != nil && app.drag.element != NO_ELEMENT {
 					move_drag(app, window_position(window) + [2]f32{event.button.x, event.button.y} / UI_UNIT_POINTS)
 				}
-				app.pressed = -1
+				app.pressed = NO_ELEMENT
 				end_drag(app)
 			}
 		case .WINDOW_CLOSE_REQUESTED:
@@ -117,11 +122,11 @@ requests :: proc(app: ^UI) {
 				sync_viewport(window)
 			}
 		case .WINDOW_FOCUS_LOST:
-			app.pressed = -1
+			app.pressed = NO_ELEMENT
 			// Cross-window drags continue until global button state reports release.
 		}
 	}
-	if app.drag.element >= 0 {
+	if app.drag.element != NO_ELEMENT {
 		mouse: [2]f32
 		buttons := sdl3.GetGlobalMouseState(&mouse[0], &mouse[1])
 		move_drag(app, mouse / UI_UNIT_POINTS)
@@ -133,31 +138,32 @@ requests :: proc(app: ^UI) {
 
 @(private="package")
 move_drag :: proc(app: ^UI, global_mouse: [2]f32) {
-	mouse := global_mouse - window_position(element_window(app, Element_ID(app.drag.element)))
-	r := bounds(app, Element_ID(app.drag.element))
-	set_layout(app, Element_ID(app.drag.element), translated(r, mouse - app.drag.offset - [2]f32{r.left, r.top}))
+	id := app.drag.element
+	mouse := global_mouse - window_position(element_window(app, id))
+	r := bounds(app, id)
+	set_layout(app, id, translated(r, mouse - app.drag.offset - [2]f32{r.left, r.top}))
 }
 
 @(private="package")
 end_drag :: proc(app: ^UI) {
-	if app.drag.element < 0 {
+	if app.drag.element == NO_ELEMENT {
 		return
 	}
 	app.drag.released = app.drag.element
-	app.drag.element = -1
+	app.drag.element = NO_ELEMENT
 	_ = sdl3.CaptureMouse(false)
 }
 
 dragging :: proc(app: ^UI, id: Element_ID) -> bool {
-	return app.drag.element == int(id)
+	return app.drag.element == id
 }
 
 drag_started :: proc(app: ^UI, id: Element_ID) -> bool {
-	return app.drag.started == int(id)
+	return app.drag.started == id
 }
 
 dropped :: proc(app: ^UI, id: Element_ID) -> bool {
-	return app.drag.released == int(id)
+	return app.drag.released == id
 }
 
 // Preserve the grab point when application code changes the dragged shape.

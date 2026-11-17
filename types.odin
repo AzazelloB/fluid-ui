@@ -70,6 +70,6 @@ Element :: struct {
 	pointer:       Pointer_Behavior,
 	owner:         ^Scene,
 	motion:        Motion,
-	press:         Element_Callback,
-	update:        Update_Callback,
+	press:         Element_Callback(Element_ID),
+	update:        Element_Callback(f64),
 }

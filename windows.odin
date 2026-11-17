@@ -9,18 +9,23 @@ import ttf "vendor:sdl3/ttf"
 // their window to preserve their IDs; remaining IDs are invalidated on close.
 Window :: struct {
 	ui:              ^UI,
-	handle:          ^sdl3.Window,
-	renderer:        ^sdl3.Renderer,
-	fonts:           [Text_Weight][Text_Size]^ttf.Font,
-	text_engine:     ^ttf.TextEngine,
-	pixel_density:   f32,
+	using native:    Window_Resources,
 	viewport:        Element_ID,
 	scenes:          [dynamic]^Scene,
 	close_requested: bool,
 	effect:          Window_Effect,
-	pending_flags:   bool,
-	requested_flags: sdl3.WindowFlags,
+	requested_flags: Maybe(sdl3.WindowFlags),
 	storage:         virtual.Arena,
+}
+
+// These resources can be replaced while the logical window stays in place.
+@(private="package")
+Window_Resources :: struct {
+	handle:        ^sdl3.Window,
+	renderer:      ^sdl3.Renderer,
+	fonts:         [Text_Weight][Text_Size]^ttf.Font,
+	text_engine:   ^ttf.TextEngine,
+	pixel_density: f32,
 }
 
 create_window :: proc(app: ^UI, config: Config) -> ^Window {
@@ -37,7 +42,7 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 		return nil
 	}
 	window.scenes = make([dynamic]^Scene, virtual.arena_allocator(&window.storage))
-	if !create_window_resources(window, config) {
+	if !create_window_resources(&window.native, config) {
 		virtual.arena_destroy(&window.storage)
 		append(&app.free_windows, window)
 		return nil
@@ -49,7 +54,7 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 }
 
 @(private="package")
-create_window_resources :: proc(window: ^Window, config: Config) -> bool {
+create_window_resources :: proc(window: ^Window_Resources, config: Config) -> bool {
 	success := false
 	defer {
 		if !success {
@@ -111,14 +116,7 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	config.size = {f32(size[0]) / UI_UNIT_POINTS, f32(size[1]) / UI_UNIT_POINTS}
 	config.minimum_size = {f32(minimum[0]) / UI_UNIT_POINTS, f32(minimum[1]) / UI_UNIT_POINTS}
 
-	replacement := Window{
-		ui = window.ui,
-		viewport = window.viewport,
-		scenes = window.scenes,
-		close_requested = window.close_requested,
-		storage = window.storage,
-		effect = window.effect,
-	}
+	replacement: Window_Resources
 	if !create_window_resources(&replacement, config) {
 		return false
 	}
@@ -126,25 +124,24 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 		release_window_resources(&replacement)
 		return false
 	}
-	sync_text_density(&replacement)
-
-	app := window.ui
 	release_window_text(window)
-	previous := window^
-	window^ = replacement
+	previous := window.native
+	window.native = replacement
+	sync_text_density(window)
 	if .HIDDEN in sdl3.GetWindowFlags(previous.handle) {
 		present_window(window)
 	} else if !show_window(window) {
 		release_window_text(window)
-		release_window_resources(&replacement)
-		window^ = previous
+		release_window_resources(&window.native)
+		window.native = previous
 		return false
 	}
 	// Present again after showing: some backends skip hidden-window presentation.
 	if .HIDDEN not_in sdl3.GetWindowFlags(window.handle) {
 		present_window(window)
 	}
-	if app.drag.element >= 0 && get_element(app, Element_ID(app.drag.element)).owner.window == window {
+	app := window.ui
+	if app.drag.element != NO_ELEMENT && element_window(app, app.drag.element) == window {
 		end_drag(app)
 	}
 	release_window_resources(&previous)
@@ -164,10 +161,10 @@ close_window :: proc(window: ^Window) {
 		}
 	}
 	cancel_window_effect(window)
-	window.pending_flags = false
+	window.requested_flags = nil
 	remove(app, window.viewport)
 	virtual.arena_destroy(&window.storage)
-	release_window_resources(window)
+	release_window_resources(&window.native)
 	for value, i in app.windows {
 		if value == window {
 			ordered_remove(&app.windows, i)
@@ -218,7 +215,7 @@ find_window :: proc(app: ^UI, id: sdl3.WindowID) -> ^Window {
 }
 
 @(private="package")
-release_window_resources :: proc(window: ^Window) {
+release_window_resources :: proc(window: ^Window_Resources) {
 	if window.text_engine != nil {
 		ttf.DestroyRendererTextEngine(window.text_engine)
 	}
@@ -235,17 +232,18 @@ release_window_resources :: proc(window: ^Window) {
 	if window.handle != nil {
 		sdl3.DestroyWindow(window.handle)
 	}
-	window.text_engine = nil
-	window.fonts = {}
-	window.renderer = nil
-	window.handle = nil
+	window^ = {}
 }
 
 // Creation-only flag changes are performed by Fluid before the next draw.
 set_window_flags :: proc(window: ^Window, flags: sdl3.WindowFlags) {
 	assert(window.handle != nil)
 	window.requested_flags = flags
-	window.pending_flags = true
+}
+
+// Renderer coordinates are physical pixels, including on high-density displays.
+pixel_scale :: proc(window: ^Window) -> f32 {
+	return window.pixel_density * UI_UNIT_POINTS
 }
 
 // Native placement and size requests share the same UI units as layout/input.

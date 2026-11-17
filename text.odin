@@ -23,7 +23,7 @@ measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
 	weight: Text_Weight = .Regular, wrap_width: f32 = 0,
 ) -> (f32, f32) {
 	pixel_width, pixel_height: i32
-	scale := window.pixel_density * UI_UNIT_POINTS
+	scale := pixel_scale(window)
 	font := window.fonts[weight][size]
 	if wrap_width > 0 {
 		assert(ttf.GetStringSizeWrapped(font, raw_data(label), len(label),
@@ -35,7 +35,7 @@ measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
 }
 
 text_line_height :: proc(window: ^Window, size: Text_Size = .Body, weight: Text_Weight = .Regular) -> f32 {
-	scale := window.pixel_density * UI_UNIT_POINTS
+	scale := pixel_scale(window)
 	return f32(ttf.GetFontLineSkip(window.fonts[weight][size])) / scale
 }
 
@@ -58,7 +58,7 @@ draw_label :: proc(window: ^Window, element: ^Element, rect: Pins) {
 		element.text = ttf.CreateText(window.text_engine, font, raw_data(element.label), len(element.label))
 		assert(element.text != nil)
 	}
-	scale := window.pixel_density * UI_UNIT_POINTS
+	scale := pixel_scale(window)
 	wrap_pixels: i32
 	if element.text_wrap {
 		wrap_pixels = max(i32(1), i32(width(rect) * scale))

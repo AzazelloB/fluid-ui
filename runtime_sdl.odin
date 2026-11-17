@@ -14,8 +14,8 @@ UI :: struct {
 	windows:                           [dynamic]^Window,
 	free_windows:                      [dynamic]^Window,
 	free_elements:                     [dynamic]int,
-	hovered:                           int,
-	pressed:                           int,
+	hovered:                           Element_ID,
+	pressed:                           Element_ID,
 	drag:                              Drag,
 	cursors:                           SDL_Cursors,
 	elements:                          [dynamic]Element, // Stable registry indices; never reordered.
@@ -37,9 +37,9 @@ Config :: struct {
 init :: proc(app: ^UI, config: Config) -> bool {
 	app^ = UI{
 		running = true,
-		hovered = -1,
-		pressed = -1,
-		drag = {element = -1, started = -1, released = -1},
+		hovered = NO_ELEMENT,
+		pressed = NO_ELEMENT,
+		drag = {element = NO_ELEMENT, started = NO_ELEMENT, released = NO_ELEMENT},
 	}
 	success := false
 	defer {
@@ -104,8 +104,8 @@ begin_frame :: proc(app: ^UI) -> f64 {
 		sync_text_density(window)
 	}
 	clear(&app.events)
-	app.drag.started = -1
-	app.drag.released = -1
+	app.drag.started = NO_ELEMENT
+	app.drag.released = NO_ELEMENT
 	now := sdl3.GetTicksNS()
 	dt := f64(now - app.previous) / 1_000_000_000
 	app.previous = now
@@ -157,9 +157,8 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 			i += 1
 		}
 		for window in ui.windows {
-			if window.pending_flags {
-				flags := window.requested_flags
-				window.pending_flags = false
+			if flags, pending := window.requested_flags.?; pending {
+				window.requested_flags = nil
 				if !replace_window(window, flags) {
 					fmt.eprintln("Cannot replace window:", sdl3.GetError())
 					ui.running = false

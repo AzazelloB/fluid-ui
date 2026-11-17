@@ -1,7 +1,5 @@
 package fluid
 
-import virtual "core:mem/virtual"
-
 @(private="package")
 slot :: proc(id: Element_ID) -> int {
 	return int(u64(id) & 0xffff_ffff)
@@ -21,7 +19,6 @@ get_element :: proc(app: ^UI, id: Element_ID) -> ^Element {
 
 @(private="package")
 register_element :: proc(app: ^UI, definition: Element) -> Element_ID {
-	context.allocator = virtual.arena_allocator(&app.storage)
 	i := len(app.elements)
 	element := definition
 	element.alive = true

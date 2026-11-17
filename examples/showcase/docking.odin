@@ -44,17 +44,8 @@ create_docking :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 	fluid.on_update(ui, page.area, page, update_docking)
 }
 
-contains :: proc(pins: fluid.Pins, point: [2]f32) -> bool {
-	return point[0] >= pins.left && point[0] < pins.right && point[1] >= pins.top && point[1] < pins.bottom
-}
-
 card_at :: proc(position: [2]f32) -> fluid.Pins {
-	return {
-		left = position[0],
-		top = position[1],
-		right = position[0] + CARD_SIZE[0],
-		bottom = position[1] + CARD_SIZE[1],
-	}
+	return fluid.rect(position[0], position[1], CARD_SIZE[0], CARD_SIZE[1])
 }
 
 fill_floating_window :: proc(page: ^Docking, ui: ^fluid.UI) {
@@ -115,7 +106,7 @@ return_card :: proc(page: ^Docking, ui: ^fluid.UI) {
 dock_card :: proc(page: ^Docking, ui: ^fluid.UI, dock: Dock) {
 	page.docked = dock
 	fluid.set_label(ui, page.card, dock == .Bottom ? "Horizontal card" : "Vertical card")
-	fluid.animate_to(ui, page.card, fluid.bounds(ui, page.zones[dock]), {duration = 0.4, sample = smooth_damp, progress = damp_progress})
+	fluid.animate_to(ui, page.card, fluid.bounds(ui, page.zones[dock]), damped_animation(0.4))
 }
 
 reset_card :: proc(page: ^Docking, ui: ^fluid.UI) {
@@ -136,8 +127,7 @@ leave_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 }
 
 layout_docking :: proc(page: ^Docking, ui: ^fluid.UI, viewport: fluid.Pins) {
-	navigation := fluid.bounds(ui, page.navigation)
-	area := fluid.Pins{left = navigation.right + 2.25, top = 1.5, right = viewport.right - 2.25, bottom = viewport.bottom - 1.5}
+	area := content_pins(ui, page.navigation, viewport)
 	fluid.set_target(ui, page.area, area)
 	fluid.set_target(ui, page.zones[.Left], {
 		left = area.left + 0.75, top = area.top + 0.75, right = area.left + 10.75, bottom = area.bottom - 8.5,
@@ -200,7 +190,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 	delta := fluid.window_position(ui.window) + mouse - page.drag_origin
 	page.drag_moved = page.drag_moved || delta[0] * delta[0] + delta[1] * delta[1] > 0.0625
 	card_is_floating := page.floating_scene != nil && fluid.element_window(ui, page.card) == page.floating_scene.window
-	if page.drag_moved && card_is_floating && contains(fluid.bounds(ui, page.area), mouse) {
+	if page.drag_moved && card_is_floating && fluid.contains(fluid.bounds(ui, page.area), mouse) {
 		// Move the actual element onto the main window's drawing surface.
 		// Keep its source window alive until release so mouse capture survives.
 		fluid.transfer(ui, page.card, page.card_scene)
@@ -213,7 +203,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 	}
 	selected: Maybe(Dock)
 	for dock in Dock {
-		over := contains(fluid.bounds(ui, page.zones[dock]), mouse)
+		over := fluid.contains(fluid.bounds(ui, page.zones[dock]), mouse)
 		if over {
 			selected = dock
 		}

@@ -11,7 +11,7 @@ Launch_Reveal :: struct {
 start_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) {
 	mouse := fluid.pointer_position(window)
 	r := fluid.bounds(window.ui, window.viewport)
-	if mouse[0] < 0 || mouse[0] >= fluid.width(r) || mouse[1] < 0 || mouse[1] >= fluid.height(r) {
+	if !fluid.contains(r, mouse) {
 		mouse = {fluid.width(r) / 2, fluid.height(r) / 2}
 	}
 	reveal.origin = mouse
@@ -24,12 +24,12 @@ finish_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window) {
 
 draw_launch_reveal :: proc(reveal: ^Launch_Reveal, window: ^fluid.Window, t: f32) {
 	r := fluid.bounds(window.ui, window.viewport)
-	scale := window.pixel_density * fluid.UI_UNIT_POINTS
+	scale := fluid.pixel_scale(window)
 	center := reveal.origin * scale
 	dx := max(reveal.origin[0], fluid.width(r) - reveal.origin[0]) * scale
 	dy := max(reveal.origin[1], fluid.height(r) - reveal.origin[1]) * scale
 	diagonal := math.sqrt(dx * dx + dy * dy)
-	radius := diagonal * t * t * (3 - 2 * t)
+	radius := diagonal * smoothstep(t)
 	outer := diagonal * 3 + 4
 	SEGMENTS :: 192
 	vertices: [SEGMENTS * 6]sdl3.Vertex

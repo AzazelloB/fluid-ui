@@ -10,16 +10,16 @@ draw :: proc(app: ^UI, window: ^Window) {
 	sdl3.RenderClear(renderer)
 	sdl3.SetRenderDrawBlendMode(renderer, sdl3.BLENDMODE_BLEND)
 
+	scale := pixel_scale(window)
 	for id in app.active {
 		element := get_element(app, id)
 		if element.owner.window != window {
 			continue
 		}
-		r := bounds(app, id)
+		r := element_bounds(element)
 		if width(r) <= 0 || height(r) <= 0 {
 			continue
 		}
-		scale := window.pixel_density * UI_UNIT_POINTS
 		pixels := sdl3.FRect{r.left * scale, r.top * scale, width(r) * scale, height(r) * scale}
 		if element.kind != .Label && pixels.w > 0 && pixels.h > 0 {
 			style := element.style
@@ -33,9 +33,9 @@ draw :: proc(app: ^UI, window: ^Window) {
 					rounded_fill(renderer, shadow, radius + spread, {0, 0, 0, 5})
 				}
 			}
-			color := background(app, id)
+			color := background(app, id, element)
 			border_color := style.border
-			if app.hovered == int(id) {
+			if app.hovered == id {
 				if hover_color, ok := style.hover_border.?; ok {
 					border_color = hover_color
 				}
@@ -53,6 +53,27 @@ draw :: proc(app: ^UI, window: ^Window) {
 			draw_label(window, element, r)
 		}
 	}
+}
+
+@(private="package")
+background :: proc(app: ^UI, id: Element_ID, element: ^Element) -> Color {
+	color := element.color
+	if element.kind != .Button {
+		return color
+	}
+	if element.selected {
+		color = {44, 78, 75, 255}
+	}
+	delta: i32
+	if app.pressed == id {
+		delta = -8
+	} else if app.hovered == id {
+		delta = 12
+	}
+	color.r = u8(clamp(i32(color.r) + delta, 0, 255))
+	color.g = u8(clamp(i32(color.g) + delta, 0, 255))
+	color.b = u8(clamp(i32(color.b) + delta, 0, 255))
+	return color
 }
 
 // Convex rounded silhouette with a one-physical-pixel alpha fringe. No shaders,

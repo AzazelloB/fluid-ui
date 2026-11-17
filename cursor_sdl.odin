@@ -28,10 +28,10 @@ destroy_cursors :: proc(cursors: SDL_Cursors) {
 @(private="package")
 update_cursor :: proc(app: ^UI) {
 	cursor: ^sdl3.Cursor
-	if app.drag.element >= 0 {
+	if app.drag.element != NO_ELEMENT {
 		cursor = app.cursors.move
-	} else if app.hovered >= 0 {
-		element := get_element(app, Element_ID(app.hovered))
+	} else if app.hovered != NO_ELEMENT {
+		element := get_element(app, app.hovered)
 		cursor = element.draggable ? app.cursors.move : app.cursors.pointer
 	}
 	if cursor == nil {

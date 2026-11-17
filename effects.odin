@@ -1,6 +1,7 @@
 package fluid
 
-import virtual "core:mem/virtual"
+import "core:mem"
+import "core:os"
 import "vendor:sdl3"
 
 @(private="package")
@@ -27,9 +28,9 @@ window_effect :: proc(window: ^Window, duration: f64, owner: ^$Owner,
 	complete: proc(owner: ^Owner, window: ^Window) = nil,
 ) {
 	assert(window.handle != nil && duration > 0 && owner != nil && draw != nil)
-	context.allocator = virtual.arena_allocator(&window.ui.storage)
-	binding := new(Effect_Binding(Owner))
+	binding := new(Effect_Binding(Owner), os.heap_allocator())
 	binding^ = {owner, draw, complete}
+	cancel_window_effect(window)
 	window.effect = Window_Effect{
 		data = binding, duration = duration, frame = window.ui.frame,
 		draw = proc(data: rawptr, window: ^Window, progress: f32) {
@@ -46,6 +47,7 @@ window_effect :: proc(window: ^Window, duration: f64, owner: ^$Owner,
 }
 
 cancel_window_effect :: proc(window: ^Window) {
+	mem.free(window.effect.data, os.heap_allocator())
 	window.effect = {}
 }
 
@@ -76,9 +78,8 @@ advance_window_effects :: proc(ui: ^UI, dt: f64) {
 		if effect.elapsed >= effect.duration {
 			finished := effect^
 			effect^ = {}
-			if finished.complete != nil {
-				finished.complete(finished.data, window)
-			}
+			finished.complete(finished.data, window)
+			mem.free(finished.data, os.heap_allocator())
 		}
 	}
 }

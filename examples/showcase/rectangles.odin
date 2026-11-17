@@ -33,8 +33,7 @@ anchor_pins :: proc(stage: fluid.Pins, shifted: bool) -> fluid.Pins {
 
 update_rectangles :: proc(page: ^Rectangles, ui: ^fluid.UI, dt: f64) {
 	viewport := fluid.bounds(ui, ui.window.viewport)
-	navigation := fluid.bounds(ui, page.navigation)
-	stage := fluid.Pins{left = navigation.right + 2.25, top = 1.5, right = viewport.right - 2.25, bottom = viewport.bottom - 1.5}
+	stage := content_pins(ui, page.navigation, viewport)
 	fluid.set_target(ui, page.stage, stage)
 	fluid.set_target(ui, page.toggle, {
 		left = stage.right - 7.75, top = stage.top + 1.25, right = stage.right - 1.25, bottom = stage.top + 3.5,
@@ -56,6 +55,6 @@ update_rectangles :: proc(page: ^Rectangles, ui: ^fluid.UI, dt: f64) {
 shift_anchor :: proc(page: ^Rectangles, ui: ^fluid.UI, id: fluid.Element_ID) {
 	page.shifted = !page.shifted
 	stage := fluid.bounds(ui, page.stage)
-	fluid.animate_to(ui, page.anchor, anchor_pins(stage, page.shifted), {duration = 0.65, sample = smooth_damp, progress = damp_progress})
+	fluid.animate_to(ui, page.anchor, anchor_pins(stage, page.shifted), damped_animation(0.65))
 	fluid.set_label(ui, id, page.shifted ? "Reset" : "Move")
 }

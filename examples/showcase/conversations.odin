@@ -36,10 +36,11 @@ conversation_pins :: proc(sidebar, heading: fluid.Pins, index: int) -> fluid.Pin
 
 conversations_layout :: proc(page: ^Conversations, ui: ^fluid.UI) -> (sidebar, heading, area: fluid.Pins) {
 	viewport := fluid.bounds(ui, ui.window.viewport)
-	navigation := fluid.bounds(ui, page.navigation)
-	sidebar = {left = viewport.right - 18.75, top = 1.5, right = viewport.right - 2.25, bottom = viewport.bottom - 1.5}
+	content := content_pins(ui, page.navigation, viewport)
+	sidebar = {left = viewport.right - 18.75, top = content.top, right = content.right, bottom = content.bottom}
 	heading = {left = sidebar.left + 1.25, top = sidebar.top + 1.25, right = sidebar.right - 1.25, bottom = sidebar.top + 3}
-	area = {left = navigation.right + 2.25, top = sidebar.top, right = sidebar.left - 1.25, bottom = sidebar.bottom}
+	area = content
+	area.right = sidebar.left - 1.25
 	return
 }
 
@@ -69,7 +70,7 @@ create_send_button :: proc(page: ^Conversations, ui: ^fluid.UI) {
 	fluid.set_color(ui, id, {50, 103, 90, 255})
 	fluid.set_style(ui, id, {radius = 0.75, border = {91, 152, 132, 255}, border_width = 0.0625, shadow = 0.625})
 	page.send_button = id
-	fluid.animate_to(ui, id, send_button_pins(area), {duration = 0.14, sample = smooth_damp, progress = damp_progress})
+	fluid.animate_to(ui, id, send_button_pins(area), damped_animation(0.14))
 	fluid.on_press(ui, id, page, send_message)
 }
 
@@ -83,7 +84,7 @@ send_message :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Element_ID) 
 	heading := fluid.bounds(ui, page.heading)
 	for item, index in page.items[1:] {
 		fluid.animate_to(ui, item, conversation_pins(sidebar, heading, index + 1),
-			{duration = 0.4, sample = smooth_damp, progress = damp_progress})
+			damped_animation(0.4))
 	}
 	page.sent += 1
 	subjects := [6]string{"Design", "Weekend plans", "Photos", "Project notes", "Lunch", "Reading list"}
@@ -93,7 +94,7 @@ send_message :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Element_ID) 
 	fluid.on_press(ui, id, page, select_conversation)
 	select_conversation(page, ui, id)
 	fluid.animate_to(ui, id, conversation_pins(sidebar, heading, 0),
-		{duration = 0.9, sample = arc, progress = damp_progress})
+		damped_animation(0.9, arc))
 	create_send_button(page, ui)
 }
 

@@ -41,20 +41,6 @@ deactivate :: proc(scene: ^Scene) {
 	scene.active = false
 }
 
-// Invalidate the ID before recycling its slot. Other elements store values.
-remove :: proc(app: ^UI, id: Element_ID) {
-	element := get_element(app, id)
-	if element.owner != nil {
-		remove_id(&element.owner.members, id)
-	}
-	deactivate_element(app, id)
-	remove_id(&app.events, id)
-	release_text(element)
-	generation := element.generation + 1
-	element^ = Element{generation = generation}
-	append(&app.free_elements, slot(id))
-}
-
 // Move the actual element, keeping its ID and animation progress.
 // Literal positions and animation origins are rebased to preserve screen space.
 transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
@@ -72,7 +58,6 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
 		element.motion.from = translated(element.motion.from, offset)
 		release_text(element)
 	}
-	context.allocator = virtual.arena_allocator(&app.storage)
 	remove_id(&source.members, id)
 	append(&destination.members, id)
 	element.owner = destination
@@ -94,13 +79,13 @@ is_active :: proc(app: ^UI, id: Element_ID) -> bool {
 @(private="package")
 deactivate_element :: proc(app: ^UI, id: Element_ID) {
 	remove_id(&app.active, id)
-	if app.hovered == int(id) {
-		app.hovered = -1
+	if app.hovered == id {
+		app.hovered = NO_ELEMENT
 	}
-	if app.pressed == int(id) {
-		app.pressed = -1
+	if app.pressed == id {
+		app.pressed = NO_ELEMENT
 	}
-	if app.drag.element == int(id) {
+	if app.drag.element == id {
 		end_drag(app)
 	}
 }

@@ -4,7 +4,11 @@ import "core:math"
 
 // Bounds are numeric values in the element's window, in UI units.
 bounds :: proc(ui: ^UI, id: Element_ID) -> Pins {
-	element := get_element(ui, id)
+	return element_bounds(get_element(ui, id))
+}
+
+@(private="package")
+element_bounds :: proc(element: ^Element) -> Pins {
 	result := element.pins
 	if element.motion.animation.sample != nil {
 		motion := element.motion
@@ -15,6 +19,15 @@ bounds :: proc(ui: ^UI, id: Element_ID) -> Pins {
 
 width :: proc(pins: Pins) -> f32 { return max(f32(0), pins.right - pins.left) }
 height :: proc(pins: Pins) -> f32 { return max(f32(0), pins.bottom - pins.top) }
+
+rect :: proc(x, y, width, height: f32) -> Pins {
+	return {x, y, x + width, y + height}
+}
+
+contains :: proc(pins: Pins, point: [2]f32) -> bool {
+	return point[0] >= pins.left && point[0] < pins.right &&
+		point[1] >= pins.top && point[1] < pins.bottom
+}
 
 // Translating moves both pins, so it preserves dimensions.
 translated :: proc(pins: Pins, offset: [2]f32) -> Pins {

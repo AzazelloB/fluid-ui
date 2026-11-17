@@ -31,6 +31,9 @@ edges collapse to zero extent; empty rectangles are not drawn or hit.
 Non-finite pins assert.
 
 `width(pins)` and `height(pins)` return nonnegative dimensions.
+`rect(x, y, width, height)` builds edge coordinates from a position and size.
+`contains(pins, point)` includes the left and top edges and excludes the right
+and bottom edges.
 `translated(pins, {dx, dy})` moves both corners without changing size.
 
 `set_text_style` accepts regular or bold weight and left, center, or right
@@ -74,4 +77,5 @@ Bounds and pointer coordinates are window-local.
 pins and animation origin to preserve desktop position.
 
 Use `window_position`, `pointer_position`, `set_window_position`, and
-`set_window_size` for UI units. Raw SDL APIs still expect SDL's own units.
+`set_window_size` for UI units. Multiply UI units by `pixel_scale(window)`
+when drawing directly into an SDL renderer.

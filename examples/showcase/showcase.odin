@@ -5,7 +5,6 @@ import fluid "../.."
 Showcase :: struct {
 	launch:        Launch_Reveal,
 	pages:         fluid.Page_Set(Showcase),
-	navigation:    ^fluid.Scene,
 	sidebar:       fluid.Element_ID,
 	rectangles:    Rectangles,
 	conversations: Conversations,
@@ -23,18 +22,28 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	}
 	fluid.create_pages(&app.pages, ui, app, definitions[:])
 	start_launch_reveal(&app.launch, ui.window)
-	app.navigation = fluid.create_scene(ui.window)
+	navigation := fluid.create_scene(ui.window)
 	viewport := fluid.bounds(ui, ui.window.viewport)
 	width := navigation_width(app, ui)
-	app.sidebar = fluid.panel(app.navigation, {right = width, bottom = viewport.bottom}, {21, 29, 40, 255})
+	app.sidebar = fluid.panel(navigation, {right = width, bottom = viewport.bottom}, {21, 29, 40, 255})
 	for page, index in app.pages.entries {
-		tab := fluid.button(app.navigation, tab_pins(width, index), page.title)
+		tab := fluid.button(navigation, tab_pins(width, index), page.title)
 		fluid.set_text_style(ui, tab, .Body, INK)
 		fluid.bind_page_tab(&app.pages, index, tab)
 	}
 	fluid.on_update(ui, app.sidebar, app, update_navigation)
-	fluid.activate(app.navigation)
+	fluid.activate(navigation)
 	fluid.open_page(&app.pages, 0)
+}
+
+// The inset content area starts beside the navigation sidebar.
+content_pins :: proc(ui: ^fluid.UI, sidebar: fluid.Element_ID, viewport: fluid.Pins) -> fluid.Pins {
+	return {
+		left = fluid.bounds(ui, sidebar).right + 2.25,
+		top = 1.5,
+		right = viewport.right - 2.25,
+		bottom = viewport.bottom - 1.5,
+	}
 }
 
 tab_pins :: proc(width: f32, index: int) -> fluid.Pins {

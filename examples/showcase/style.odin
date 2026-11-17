@@ -11,9 +11,10 @@ EDGE :: fluid.Color{46, 60, 77, 255}
 // Shared presentation helpers; each demo owns its layout and behavior.
 demo_text :: proc(scene: ^fluid.Scene, pins: fluid.Pins, text: string,
 	font: fluid.Text_Size = .Body, color: fluid.Color = INK, align: fluid.Text_Align = .Left,
+	weight: fluid.Text_Weight = .Regular,
 ) -> fluid.Element_ID {
 	id := fluid.label(scene, pins, text)
-	fluid.set_text_style(scene.ui, id, font, color, align)
+	fluid.set_text_style(scene.ui, id, font, color, align, weight)
 	return id
 }
 

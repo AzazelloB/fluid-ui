@@ -1,18 +1,19 @@
 package fluid
 
+import "core:mem"
+import "core:os"
 import "core:strings"
-import virtual "core:mem/virtual"
 
 @(private="package")
 add_element :: proc(scene: ^Scene, definition: Element) -> Element_ID {
 	app := scene.ui
-	context.allocator = virtual.arena_allocator(&app.storage)
 	element := definition
 	element.owner = scene
+	element.pins = checked_pins(element.pins)
 	if element.text_color == (Color{}) {
 		element.text_color = {230, 236, 244, 255}
 	}
-	element.label = strings.clone(definition.label)
+	element.label = strings.clone(definition.label, os.heap_allocator())
 	id := register_element(app, element)
 	append(&scene.members, id)
 	if scene.active {
@@ -21,15 +22,34 @@ add_element :: proc(scene: ^Scene, definition: Element) -> Element_ID {
 	return id
 }
 
-// Retains a copy using UI storage, even if text came from a temporary allocator.
+// Retains a copy for the element, even if text came from a temporary allocator.
 set_label :: proc(app: ^UI, id: Element_ID, text: string) {
 	element := get_element(app, id)
 	if element.label == text {
 		return
 	}
-	context.allocator = virtual.arena_allocator(&app.storage)
-	element.label = strings.clone(text)
+	previous := element.label
+	element.label = strings.clone(text, os.heap_allocator())
 	update_cached_label(element)
+	delete(previous, os.heap_allocator())
+}
+
+// Invalidate the ID before recycling its slot. Other elements store values.
+remove :: proc(app: ^UI, id: Element_ID) {
+	element := get_element(app, id)
+	if element.owner != nil {
+		remove_id(&element.owner.members, id)
+	}
+	deactivate_element(app, id)
+	remove_id(&app.events, id)
+	release_text(element)
+	allocator := os.heap_allocator()
+	delete(element.label, allocator)
+	mem.free(element.press.data, allocator)
+	mem.free(element.update.data, allocator)
+	generation := element.generation + 1
+	element^ = Element{generation = generation}
+	append(&app.free_elements, slot(id))
 }
 
 set_color :: proc(app: ^UI, id: Element_ID, color: Color) {
