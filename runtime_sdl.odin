@@ -17,6 +17,7 @@ UI :: struct {
 	hovered:                           int,
 	pressed:                           int,
 	drag:                              Drag,
+	cursors:                           SDL_Cursors,
 	elements:                          [dynamic]Element, // Stable registry indices; never reordered.
 	active:                            [dynamic]Element_ID, // Draw order and processing membership.
 	base_font_size:                    f32, // Logical points per UI unit.
@@ -66,6 +67,7 @@ init :: proc(app: ^UI, config: Config) -> bool {
 		return false
 	}
 	app.sdl_ready = true
+	app.cursors = create_cursors()
 	if !ttf.Init() {
 		fmt.eprintln(sdl3.GetError())
 		return false
@@ -88,6 +90,7 @@ destroy :: proc(app: ^UI) {
 		ttf.Quit()
 	}
 	if app.sdl_ready {
+		destroy_cursors(app.cursors)
 		sdl3.Quit()
 	}
 	if app.arena_ready {
@@ -144,6 +147,8 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 		if !ui.running {
 			break
 		}
+		// Behavior sees hover before its own layout changes.
+		refresh_hover(&ui)
 		dispatch_behavior(&ui, dt)
 		if !ui.running {
 			break
@@ -167,6 +172,14 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 					break
 				}
 			}
+		}
+		if !ui.running {
+			break
+		}
+		// Cursor and drawing share the hit against the final frame layout.
+		refresh_hover(&ui)
+		update_cursor(&ui)
+		for window in ui.windows {
 			if .HIDDEN not_in sdl3.GetWindowFlags(window.handle) {
 				present_window(window)
 			}

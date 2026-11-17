@@ -62,6 +62,20 @@ Dragging moves the element's numeric pins. Other elements move with it only if
 application code updates them. Removing an element invalidates its ID; other
 elements retain their own values.
 
+## Pointer input
+
+Pointer hit testing checks active elements from front to back. An element
+with the default `.Auto` pointer behavior receives hits if it is a button,
+is draggable, or has an `on_press` handler. Use
+`set_pointer_behavior(ui, id, .Pass)` to let hits through or `.Block` to
+stop hits at the element. For example, a scrim can block the controls behind
+it while a Back button above it still receives hits.
+
+Presses use the coordinates of the mouse-down event. Behavior callbacks see
+hover from before behavior dispatch. Fluid refreshes hover again after
+layout and window changes so the cursor and drawing use the same result.
+Set `Style.hover_border` to draw a different border color while hovered.
+
 ## Windows
 
 Bounds and pointer coordinates are window-local. `bounds_in(ui, id, window)`

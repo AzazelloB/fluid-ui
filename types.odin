@@ -21,9 +21,11 @@ Style :: struct {
 	border: Color,
 	border_width: f32,
 	shadow: f32,
+	hover_border: Maybe(Color),
 }
 
 Element_Kind :: enum {Panel, Button, Label}
+Pointer_Behavior :: enum {Auto, Pass, Block}
 Color :: sdl3.Color
 
 // Plain numbers are multiples of the UI's base font size. Pins describe an
@@ -64,6 +66,7 @@ Element :: struct {
 	text:          ^ttf.Text,
 	selected:      bool,
 	draggable:     bool,
+	pointer:       Pointer_Behavior,
 	owner:         ^Scene,
 	motion:        Motion,
 	motion_serial: u64,

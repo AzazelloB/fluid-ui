@@ -34,9 +34,15 @@ draw :: proc(app: ^UI, window: ^Window) {
 				}
 			}
 			color := background(app, id)
+			border_color := style.border
+			if app.hovered == int(id) {
+				if hover_color, ok := style.hover_border.?; ok {
+					border_color = hover_color
+				}
+			}
 			border := min(style.border_width * scale, min(pixels.w, pixels.h) / 2)
-			if border > 0 && style.border.a > 0 {
-				rounded_fill(renderer, pixels, radius, style.border)
+			if border > 0 && border_color.a > 0 {
+				rounded_fill(renderer, pixels, radius, border_color)
 				inner := sdl3.FRect{pixels.x + border, pixels.y + border, pixels.w - border * 2, pixels.h - border * 2}
 				rounded_fill(renderer, inner, max(f32(0), radius - border), color)
 			} else {

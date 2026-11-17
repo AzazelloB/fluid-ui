@@ -8,6 +8,52 @@ Drag :: struct {
 	started, released: int, // Current-frame notifications, including a quick down/up.
 }
 
+set_pointer_behavior :: proc(app: ^UI, id: Element_ID, behavior: Pointer_Behavior) {
+	get_element(app, id).pointer = behavior
+}
+
+@(private="package")
+accepts_press :: proc(element: ^Element) -> bool {
+	return element.kind == .Button || element.press.call != nil
+}
+
+@(private="package")
+hit_test :: proc(app: ^UI, window: ^Window, x, y: f32) -> int {
+	for i := len(app.active) - 1; i >= 0; i -= 1 {
+		id := app.active[i]
+		element := get_element(app, id)
+		if element.owner.window != window || element.pointer == .Pass {
+			continue
+		}
+		if element.pointer == .Auto && !element.draggable && !accepts_press(element) {
+			continue
+		}
+		r := bounds(app, id)
+		if x >= r.left && x < r.right && y >= r.top && y < r.bottom {
+			return element.pointer == .Block ? -1 : int(id)
+		}
+	}
+	return -1
+}
+
+@(private="package")
+refresh_hover :: proc(app: ^UI) {
+	app.hovered = -1
+	focus := sdl3.GetMouseFocus()
+	if focus == nil {
+		return
+	}
+	window := find_window(app, sdl3.GetWindowID(focus))
+	if window == nil {
+		return
+	}
+	mouse := pointer_position(window)
+	viewport := bounds(app, window.viewport)
+	if mouse[0] >= 0 && mouse[0] < viewport.right && mouse[1] >= 0 && mouse[1] < viewport.bottom {
+		app.hovered = hit_test(app, window, mouse[0], mouse[1])
+	}
+}
+
 requests :: proc(app: ^UI) {
 	event: sdl3.Event
 	for sdl3.PollEvent(&event) {
@@ -24,13 +70,16 @@ requests :: proc(app: ^UI) {
 				continue
 			}
 			hit := hit_test(app, window, event.button.x / app.base_font_size, event.button.y / app.base_font_size)
-			app.hovered = hit
 			app.pressed = -1
-			if hit >= 0 && get_element(app, Element_ID(hit)).kind == .Button {
+			if hit < 0 {
+				continue
+			}
+			element := get_element(app, Element_ID(hit))
+			if accepts_press(element) {
 				app.pressed = hit
 				append(&app.events, Element_ID(hit))
 			}
-			if hit >= 0 && get_element(app, Element_ID(hit)).draggable {
+			if element.draggable {
 				id := Element_ID(hit)
 				r := bounds(app, id)
 
@@ -39,11 +88,6 @@ requests :: proc(app: ^UI) {
 				app.drag.offset = {event.button.x / app.base_font_size - r.left, event.button.y / app.base_font_size - r.top}
 				bring_to_front(app, id)
 				_ = sdl3.CaptureMouse(true)
-			}
-		case .MOUSE_MOTION:
-			window := find_window(app, event.motion.windowID)
-			if window != nil {
-				app.hovered = hit_test(app, window, event.motion.x / app.base_font_size, event.motion.y / app.base_font_size)
 			}
 		case .MOUSE_BUTTON_UP:
 			if event.button.button == sdl3.BUTTON_LEFT {
@@ -72,11 +116,8 @@ requests :: proc(app: ^UI) {
 			if window != nil {
 				sync_viewport(window)
 			}
-		case .WINDOW_MOUSE_LEAVE:
-			app.hovered = -1
 		case .WINDOW_FOCUS_LOST:
 			app.pressed = -1
-			app.hovered = -1
 			// Cross-window drags continue until global button state reports release.
 		}
 	}

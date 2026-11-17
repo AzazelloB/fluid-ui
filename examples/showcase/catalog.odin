@@ -37,12 +37,11 @@ Catalog_Part :: enum {
 Catalog_Card :: struct {
 	parts: [Catalog_Part]fluid.Element_ID,
 	specs: [4]fluid.Element_ID,
-	hit: fluid.Element_ID,
 }
 
 Catalog :: struct {
 	scene: ^fluid.Scene,
-	navigation, shield, scrim, back, chevron: fluid.Element_ID,
+	navigation, scrim, back, chevron: fluid.Element_ID,
 	cards: [len(CATALOG_PRODUCTS)]Catalog_Card,
 	selected: Maybe(int),
 	reveal: f32,
@@ -58,11 +57,8 @@ create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 	append(&entry.scenes, catalog.scene)
 
 	scene := catalog.scene
-	// The transparent button catches background clicks while the details are open.
-	catalog.shield = fluid.button(scene, {}, "")
-	fluid.set_color(ui, catalog.shield, {})
-	fluid.set_style(ui, catalog.shield, {})
 	catalog.scrim = fluid.panel(scene, {}, {})
+	fluid.set_pointer_behavior(ui, catalog.scrim, .Block)
 	catalog.back = fluid.button(scene, {}, "")
 	catalog.chevron = demo_text(scene, {}, "‹", .Title, INK, .Center)
 	fluid.set_style(ui, catalog.back, {radius = 1.25})
@@ -71,10 +67,7 @@ create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 	for product, index in CATALOG_PRODUCTS {
 		card := &catalog.cards[index]
 		card.parts[.Surface] = demo_surface(scene, {})
-		card.hit = fluid.button(scene, {}, "")
-		fluid.set_color(ui, card.hit, {})
-		fluid.set_style(ui, card.hit, {})
-		fluid.on_press(ui, card.hit, catalog, open_catalog_card)
+		fluid.on_press(ui, card.parts[.Surface], catalog, open_catalog_card)
 		card.parts[.Backdrop] = fluid.panel(scene, {}, product.backdrop)
 		card.parts[.Shell] = fluid.panel(scene, {}, product.shell)
 		card.parts[.Grille] = fluid.panel(scene, {}, product.grille)
@@ -106,13 +99,12 @@ open_catalog_card :: proc(catalog: ^Catalog, ui: ^fluid.UI, id: fluid.Element_ID
 		return
 	}
 	for &card, index in catalog.cards {
-		if id == card.hit {
+		if id == card.parts[.Surface] {
 			catalog.selected = index
 			catalog.opening = true
 			fluid.bring_to_front(ui, catalog.scrim)
 			for part in card.parts { fluid.bring_to_front(ui, part) }
 			for spec in card.specs { fluid.bring_to_front(ui, spec) }
-			fluid.bring_to_front(ui, catalog.shield)
 			fluid.bring_to_front(ui, catalog.back)
 			fluid.bring_to_front(ui, catalog.chevron)
 			return
@@ -261,7 +253,6 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 	products := CATALOG_PRODUCTS
 
 	index, selected := catalog.selected.?
-	fluid.set_layout(ui, catalog.shield, selected ? viewport : fluid.Pins{})
 	fluid.set_layout(ui, catalog.scrim, selected ? viewport : fluid.Pins{})
 	fluid.set_color(ui, catalog.scrim, {8, 12, 18, u8(190 * catalog_curve(catalog.reveal))})
 	fluid.set_layout(ui, catalog.back, {})
@@ -290,11 +281,11 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 		for part in Catalog_Part {
 			fluid.set_layout(ui, card.parts[part], layout[part])
 		}
-		fluid.set_layout(ui, card.hit, expanded ? fluid.Pins{} : layout[.Surface])
-		hovered := !selected && ui.hovered == int(card.hit)
+		fluid.set_pointer_behavior(ui, card.parts[.Surface], expanded ? .Pass : .Auto)
 		fluid.set_style(ui, card.parts[.Surface], {
 			radius = 1.125 * (1 - progress),
-			border = hovered ? MUTED : EDGE,
+			border = EDGE,
+			hover_border = MUTED,
 			border_width = 0.0625 * (1 - progress),
 			shadow = 0.35 * (1 - progress),
 		})

@@ -56,15 +56,3 @@ checked_pins :: proc(value: Pins) -> Pins {
 	pins.bottom = max(pins.top, pins.bottom)
 	return pins
 }
-
-@(private="package")
-hit_test :: proc(app: ^UI, window: ^Window, x, y: f32) -> int {
-	for i := len(app.active) - 1; i >= 0; i -= 1 {
-		id := app.active[i]
-		element := get_element(app, id)
-		if element.owner.window != window || (element.kind != .Button && !element.draggable) { continue }
-		r := bounds(app, id)
-		if x >= r.left && x < r.right && y >= r.top && y < r.bottom { return int(id) }
-	}
-	return -1
-}
