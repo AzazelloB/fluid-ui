@@ -25,7 +25,7 @@ hit_test :: proc(app: ^UI, window: ^Window, point: [2]f32) -> Element_ID {
 	for i := len(app.active) - 1; i >= 0; i -= 1 {
 		id := app.active[i]
 		element := get_element(app, id)
-		if element.owner.window != window || element.pointer == .Pass {
+		if coordinate_window(element) != window || element.pointer == .Pass {
 			continue
 		}
 		if element.pointer == .Auto && !element.draggable && !accepts_press(element) {

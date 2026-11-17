@@ -65,7 +65,7 @@ advance_window_effects :: proc(ui: ^UI, dt: f64) {
 		if !valid(ui, id) {
 			continue
 		}
-		window := get_element(ui, id).space
+		window := element_window(ui, id)
 		effect := &window.effect
 		if effect.draw == nil || effect.frame == ui.frame || .HIDDEN in sdl3.GetWindowFlags(window.handle) {
 			continue

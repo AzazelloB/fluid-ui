@@ -78,24 +78,7 @@ create_window_resources :: proc(window: ^Window_Resources, config: Config) -> bo
 		return false
 	}
 	window.pixel_density = max(f32(1), sdl3.GetWindowPixelDensity(window.handle))
-	for size in Text_Size {
-		font := ttf.OpenFont("/System/Library/Fonts/SFNS.ttf", text_size_units(size) * UI_UNIT_POINTS * window.pixel_density)
-		if font == nil {
-			font = ttf.OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", text_size_units(size) * UI_UNIT_POINTS * window.pixel_density)
-		}
-		if font == nil {
-			return false
-		}
-		window.fonts[.Regular][size] = font
-		bold := ttf.CopyFont(font)
-		if bold == nil {
-			return false
-		}
-		ttf.SetFontStyle(bold, {.BOLD})
-		window.fonts[.Bold][size] = bold
-	}
-	window.text_engine = ttf.CreateRendererTextEngine(window.renderer)
-	if window.text_engine == nil {
+	if !create_text_resources(window) {
 		return false
 	}
 	success = true
@@ -177,15 +160,6 @@ close_window :: proc(window: ^Window) {
 	append(&app.free_windows, window)
 }
 
-@(private="package")
-release_window_text :: proc(window: ^Window) {
-	for scene in window.scenes {
-		for id in scene.members {
-			release_text(get_element(window.ui, id))
-		}
-	}
-}
-
 window_position :: proc(window: ^Window) -> [2]f32 {
 	x, y: i32
 	assert(sdl3.GetWindowPosition(window.handle, &x, &y))
@@ -216,16 +190,7 @@ find_window :: proc(app: ^UI, id: sdl3.WindowID) -> ^Window {
 
 @(private="package")
 release_window_resources :: proc(window: ^Window_Resources) {
-	if window.text_engine != nil {
-		ttf.DestroyRendererTextEngine(window.text_engine)
-	}
-	for sizes in window.fonts {
-		for font in sizes {
-			if font != nil {
-				ttf.CloseFont(font)
-			}
-		}
-	}
+	release_text_resources(window)
 	if window.renderer != nil {
 		sdl3.DestroyRenderer(window.renderer)
 	}

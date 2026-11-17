@@ -32,11 +32,3 @@ register_element :: proc(app: ^UI, definition: Element) -> Element_ID {
 	assert(element.generation < 0x8000_0000, "Element generation exhausted")
 	return Element_ID(u64(i) | (u64(element.generation) << 32))
 }
-
-@(private="package")
-coordinate_window :: proc(element: ^Element) -> ^Window {
-	if element.owner != nil {
-		return element.owner.window
-	}
-	return element.space
-}

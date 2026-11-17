@@ -13,7 +13,7 @@ draw :: proc(app: ^UI, window: ^Window) {
 	scale := pixel_scale(window)
 	for id in app.active {
 		element := get_element(app, id)
-		if element.owner.window != window {
+		if coordinate_window(element) != window {
 			continue
 		}
 		r := element_bounds(element)

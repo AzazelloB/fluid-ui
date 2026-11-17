@@ -11,7 +11,7 @@ add_element :: proc(scene: ^Scene, definition: Element) -> Element_ID {
 	element.owner = scene
 	element.pins = checked_pins(element.pins)
 	if element.text_color == (Color{}) {
-		element.text_color = {230, 236, 244, 255}
+		element.text_color = DEFAULT_TEXT_COLOR
 	}
 	element.label = strings.clone(definition.label, os.heap_allocator())
 	id := register_element(app, element)
@@ -75,12 +75,20 @@ element_window :: proc(app: ^UI, id: Element_ID) -> ^Window {
 	return coordinate_window(get_element(app, id))
 }
 
+@(private="package")
+coordinate_window :: proc(element: ^Element) -> ^Window {
+	if element.owner != nil {
+		return element.owner.window
+	}
+	return element.space
+}
+
 set_style :: proc(app: ^UI, id: Element_ID, style: Style) {
 	get_element(app, id).style = style
 }
 
 set_text_style :: proc(app: ^UI, id: Element_ID, size: Text_Size = .Body,
-	color: Color = {230, 236, 244, 255}, align: Text_Align = .Center,
+	color: Color = DEFAULT_TEXT_COLOR, align: Text_Align = .Center,
 	weight: Text_Weight = .Regular,
 ) {
 	element := get_element(app, id)

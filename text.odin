@@ -4,6 +4,51 @@ import "core:math"
 import "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
+@(private="package")
+DEFAULT_TEXT_COLOR :: Color{230, 236, 244, 255}
+
+@(private="package")
+create_text_resources :: proc(window: ^Window_Resources) -> bool {
+	for size in Text_Size {
+		pixels := font_pixels(size, window.pixel_density)
+		font := ttf.OpenFont("/System/Library/Fonts/SFNS.ttf", pixels)
+		if font == nil {
+			font = ttf.OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", pixels)
+		}
+		if font == nil {
+			return false
+		}
+		window.fonts[.Regular][size] = font
+		bold := ttf.CopyFont(font)
+		if bold == nil {
+			return false
+		}
+		ttf.SetFontStyle(bold, {.BOLD})
+		window.fonts[.Bold][size] = bold
+	}
+	window.text_engine = ttf.CreateRendererTextEngine(window.renderer)
+	return window.text_engine != nil
+}
+
+@(private="package")
+release_text_resources :: proc(window: ^Window_Resources) {
+	if window.text_engine != nil {
+		ttf.DestroyRendererTextEngine(window.text_engine)
+	}
+	for sizes in window.fonts {
+		for font in sizes {
+			if font != nil {
+				ttf.CloseFont(font)
+			}
+		}
+	}
+}
+
+@(private="file")
+font_pixels :: proc(size: Text_Size, density: f32) -> f32 {
+	return text_size_units(size) * UI_UNIT_POINTS * density
+}
+
 // Layout and measurements stay in font-relative UI units. Only the SDL
 // boundary works in logical points or physical pixels.
 @(private="package")
@@ -12,11 +57,16 @@ sync_text_density :: proc(window: ^Window) {
 	if density != window.pixel_density {
 		for weight in Text_Weight {
 			for size in Text_Size {
-				assert(ttf.SetFontSize(window.fonts[weight][size], text_size_units(size) * UI_UNIT_POINTS * density))
+				assert(ttf.SetFontSize(window.fonts[weight][size], font_pixels(size, density)))
 			}
 		}
 		window.pixel_density = density
 	}
+}
+
+@(private="file")
+wrap_width_pixels :: proc(width, scale: f32) -> i32 {
+	return max(i32(1), i32(width * scale))
 }
 
 measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
@@ -27,7 +77,7 @@ measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
 	font := window.fonts[weight][size]
 	if wrap_width > 0 {
 		assert(ttf.GetStringSizeWrapped(font, raw_data(label), len(label),
-			max(i32(1), i32(wrap_width * scale)), &pixel_width, &pixel_height))
+			wrap_width_pixels(wrap_width, scale), &pixel_width, &pixel_height))
 	} else {
 		assert(ttf.GetStringSize(font, raw_data(label), len(label), &pixel_width, &pixel_height))
 	}
@@ -61,7 +111,7 @@ draw_label :: proc(window: ^Window, element: ^Element, rect: Pins) {
 	scale := pixel_scale(window)
 	wrap_pixels: i32
 	if element.text_wrap {
-		wrap_pixels = max(i32(1), i32(width(rect) * scale))
+		wrap_pixels = wrap_width_pixels(width(rect), scale)
 	}
 	previous_wrap: i32
 	assert(ttf.GetTextWrapWidth(element.text, &previous_wrap))
@@ -104,4 +154,14 @@ release_text :: proc(element: ^Element) {
 		ttf.DestroyText(element.text)
 	}
 	element.text = nil
+}
+
+// Cached labels belong to the text engine that drew them.
+@(private="package")
+release_window_text :: proc(window: ^Window) {
+	for scene in window.scenes {
+		for id in scene.members {
+			release_text(get_element(window.ui, id))
+		}
+	}
 }
