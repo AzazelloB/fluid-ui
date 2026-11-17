@@ -13,7 +13,8 @@ text_size_units :: proc(size: Text_Size) -> f32 {
 	}
 	unreachable()
 }
-Text_Align :: enum {Center, Left}
+Text_Align :: enum {Center, Left, Right}
+Text_Weight :: enum {Regular, Bold}
 
 Style :: struct {
 	radius: f32,
@@ -57,6 +58,8 @@ Element :: struct {
 	style:         Style,
 	text_size:     Text_Size,
 	text_align:    Text_Align,
+	text_weight:   Text_Weight,
+	text_wrap:     bool,
 	text_color:    Color,
 	text:          ^ttf.Text,
 	selected:      bool,

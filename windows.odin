@@ -11,7 +11,7 @@ Window :: struct {
 	ui:              ^UI,
 	handle:          ^sdl3.Window,
 	renderer:        ^sdl3.Renderer,
-	fonts:           [Text_Size]^ttf.Font,
+	fonts:           [Text_Weight][Text_Size]^ttf.Font,
 	text_engine:     ^ttf.TextEngine,
 	pixel_density:   f32,
 	font_unit_size:  f32,
@@ -83,7 +83,13 @@ create_window_resources :: proc(window: ^Window, config: Config) -> bool {
 		if font == nil {
 			return false
 		}
-		window.fonts[size] = font
+		window.fonts[.Regular][size] = font
+		bold := ttf.CopyFont(font)
+		if bold == nil {
+			return false
+		}
+		ttf.SetFontStyle(bold, {.BOLD})
+		window.fonts[.Bold][size] = bold
 	}
 	window.text_engine = ttf.CreateRendererTextEngine(window.renderer)
 	if window.text_engine == nil {
@@ -218,9 +224,11 @@ release_window_resources :: proc(window: ^Window) {
 	if window.text_engine != nil {
 		ttf.DestroyRendererTextEngine(window.text_engine)
 	}
-	for font in window.fonts {
-		if font != nil {
-			ttf.CloseFont(font)
+	for sizes in window.fonts {
+		for font in sizes {
+			if font != nil {
+				ttf.CloseFont(font)
+			}
 		}
 	}
 	if window.renderer != nil {

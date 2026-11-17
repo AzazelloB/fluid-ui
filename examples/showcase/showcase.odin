@@ -10,6 +10,7 @@ Showcase :: struct {
 	rectangles:    Rectangles,
 	conversations: Conversations,
 	docking:       Docking,
+	catalog:       Catalog,
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
@@ -18,6 +19,7 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 		{title = "Rectangles", create = create_rectangles},
 		{title = "Transitions", create = create_conversations},
 		{title = "Docking", create = create_docking, leave = leave_docking},
+		{title = "Catalog", create = create_catalog, leave = leave_catalog},
 	}
 	fluid.create_pages(&app.pages, ui, app, definitions[:])
 	start_launch_reveal(&app.launch, ui.window)

@@ -21,7 +21,8 @@ bounds_in :: proc(ui: ^UI, id: Element_ID, space: ^Window, target: bool = false)
 content_size :: proc(ui: ^UI, id: Element_ID) -> [2]f32 {
 	element := get_element(ui, id)
 	if len(element.label) == 0 { return {} }
-	w, h := measure_text(element.owner.window, element.label, element.text_size)
+	wrap_width := element.text_wrap ? width(bounds(ui, id)) : 0
+	w, h := measure_text(element.owner.window, element.label, element.text_size, element.text_weight, wrap_width)
 	return {w, h}
 }
 

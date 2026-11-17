@@ -10,19 +10,34 @@ import ttf "vendor:sdl3/ttf"
 sync_text_density :: proc(window: ^Window) {
 	density := max(f32(1), sdl3.GetWindowPixelDensity(window.handle))
 	if density != window.pixel_density || window.font_unit_size != window.ui.base_font_size {
-		for size in Text_Size {
-			assert(ttf.SetFontSize(window.fonts[size], text_size_units(size) * window.ui.base_font_size * density))
+		for weight in Text_Weight {
+			for size in Text_Size {
+				assert(ttf.SetFontSize(window.fonts[weight][size], text_size_units(size) * window.ui.base_font_size * density))
+			}
 		}
 		window.pixel_density = density
 		window.font_unit_size = window.ui.base_font_size
 	}
 }
 
-measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body) -> (f32, f32) {
+measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
+	weight: Text_Weight = .Regular, wrap_width: f32 = 0,
+) -> (f32, f32) {
 	pixel_width, pixel_height: i32
-	assert(ttf.GetStringSize(window.fonts[size], raw_data(label), len(label), &pixel_width, &pixel_height))
 	scale := window.pixel_density * window.ui.base_font_size
+	font := window.fonts[weight][size]
+	if wrap_width > 0 {
+		assert(ttf.GetStringSizeWrapped(font, raw_data(label), len(label),
+			max(i32(1), i32(wrap_width * scale)), &pixel_width, &pixel_height))
+	} else {
+		assert(ttf.GetStringSize(font, raw_data(label), len(label), &pixel_width, &pixel_height))
+	}
 	return f32(pixel_width) / scale, f32(pixel_height) / scale
+}
+
+text_line_height :: proc(window: ^Window, size: Text_Size = .Body, weight: Text_Weight = .Regular) -> f32 {
+	scale := window.pixel_density * window.ui.base_font_size
+	return f32(ttf.GetFontLineSkip(window.fonts[weight][size])) / scale
 }
 
 @(private="package")
@@ -40,20 +55,59 @@ update_cached_label :: proc(element: ^Element) {
 @(private="package")
 draw_label :: proc(window: ^Window, element: ^Element, rect: Pins) {
 	if element.text == nil {
-		element.text = ttf.CreateText(window.text_engine, window.fonts[element.text_size], raw_data(element.label), len(element.label))
+		font := window.fonts[element.text_weight][element.text_size]
+		element.text = ttf.CreateText(window.text_engine, font, raw_data(element.label), len(element.label))
 		assert(element.text != nil)
+	}
+	scale := window.pixel_density * window.ui.base_font_size
+	wrap_pixels: i32
+	if element.text_wrap {
+		wrap_pixels = max(i32(1), i32(width(rect) * scale))
+	}
+	previous_wrap: i32
+	assert(ttf.GetTextWrapWidth(element.text, &previous_wrap))
+	if wrap_pixels != previous_wrap {
+		assert(ttf.SetTextWrapWidth(element.text, wrap_pixels))
 	}
 	pixel_width, pixel_height: i32
 	assert(ttf.GetTextSize(element.text, &pixel_width, &pixel_height))
-	scale := window.pixel_density * window.ui.base_font_size
-	x := math.round(rect.left * scale + (width(rect) * scale - f32(pixel_width)) / 2)
-	y := math.round(rect.top * scale + (height(rect) * scale - f32(pixel_height)) / 2)
-	if element.text_align == .Left {
-		x = math.round(rect.left * scale)
+	x := rect.left * scale
+	switch element.text_align {
+	case .Left:
+	case .Center: x += (width(rect) * scale - f32(pixel_width)) / 2
+	case .Right: x = rect.right * scale - f32(pixel_width)
 	}
 	color := element.text_color
 	assert(ttf.SetTextColor(element.text, color.r, color.g, color.b, color.a))
-	assert(ttf.DrawRendererText(element.text, x, y))
+	if element.text_wrap {
+		draw_wrapped_label(window, element.text, rect, math.round(x), scale)
+	} else {
+		y := math.round(rect.top * scale + (height(rect) * scale - f32(pixel_height)) / 2)
+		assert(ttf.DrawRendererText(element.text, math.round(x), y))
+	}
+}
+
+@(private="package")
+draw_wrapped_label :: proc(window: ^Window, text: ^ttf.Text, rect: Pins, x, scale: f32) {
+	renderer := window.renderer
+	left := i32(math.round(rect.left * scale))
+	top := i32(math.round(rect.top * scale))
+	clip := sdl3.Rect{left, top, max(i32(0), i32(math.round(rect.right * scale)) - left),
+		max(i32(0), i32(math.round(rect.bottom * scale)) - top)}
+	previous: Maybe(^sdl3.Rect)
+	saved: sdl3.Rect
+	if sdl3.RenderClipEnabled(renderer) {
+		assert(sdl3.GetRenderClipRect(renderer, &saved))
+		intersection: sdl3.Rect
+		if !sdl3.GetRectIntersection(clip, saved, &intersection) {
+			return
+		}
+		clip = intersection
+		previous = &saved
+	}
+	assert(sdl3.SetRenderClipRect(renderer, &clip))
+	assert(ttf.DrawRendererText(text, x, f32(top)))
+	assert(sdl3.SetRenderClipRect(renderer, previous))
 }
 
 @(private="package")

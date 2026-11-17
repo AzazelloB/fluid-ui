@@ -62,12 +62,19 @@ set_style :: proc(app: ^UI, id: Element_ID, style: Style) {
 
 set_text_style :: proc(app: ^UI, id: Element_ID, size: Text_Size = .Body,
 	color: Color = {230, 236, 244, 255}, align: Text_Align = .Center,
+	weight: Text_Weight = .Regular,
 ) {
 	element := get_element(app, id)
-	if element.text_size != size {
+	if element.text_size != size || element.text_weight != weight {
 		release_text(element)
 	}
 	element.text_size = size
 	element.text_color = color
 	element.text_align = align
+	element.text_weight = weight
+}
+
+// Wrapped text starts at the top of its bounds and is clipped to them.
+set_text_wrap :: proc(app: ^UI, id: Element_ID, wrap: bool = true) {
+	get_element(app, id).text_wrap = wrap
 }

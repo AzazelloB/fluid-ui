@@ -37,7 +37,14 @@ Non-finite pins assert.
 
 `width(pins)` and `height(pins)` return nonnegative dimensions.
 `translated(pins, {dx, dy})` moves both corners without changing size.
-`content_size(ui, id)` measures an element's text in UI units.
+`content_size(ui, id)` measures an element's full text in UI units, using its
+current width when wrapping is enabled.
+
+`set_text_style` accepts regular or bold weight and left, center, or right
+alignment. `set_text_wrap(ui, id)` lays text out from the top of its bounds,
+wraps it to the available width, and clips it to the bounds. Use
+`text_line_height(window, size, weight)` to size the visible area by line count
+or pass a wrap width to `measure_text` to measure the full block.
 
 ## Update and animate
 
