@@ -38,6 +38,7 @@ Platform_Window :: struct {
 	selection:  NS.Range,
 	clip_active: bool,
 	live_resize_timer: objc.id,
+	zoom_pending: bool,
 }
 
 @(objc_class="NSObject", private="file")
@@ -296,7 +297,14 @@ platform_window_action :: proc(window: ^Window, action: Window_Action) -> bool {
 			return false
 		}
 		mac_send(nil, handle, "miniaturize:", objc.id(nil))
-	case .Toggle_Maximize: mac_send(nil, handle, "zoom:", objc.id(nil))
+	case .Toggle_Maximize:
+		if window.ui.live_frame_storage != nil {
+			// Run AppKit's blocking animation from the native pump, where a
+			// resize callback can safely advance the frame.
+			window.platform.zoom_pending = !window.platform.zoom_pending
+		} else {
+			mac_send(nil, handle, "zoom:", objc.id(nil))
+		}
 	case .Toggle_Fullscreen: mac_send(nil, handle, "toggleFullScreen:", objc.id(nil))
 	case: return false
 	}
@@ -404,7 +412,7 @@ mac_resize_layer :: proc(window: ^Window) {
 @(private="package")
 platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
 	NS.scoped_autoreleasepool()
-	for {
+	poll: for {
 		if mac_event_index < len(mac_events) {
 			event := mac_events[mac_event_index]
 			mac_event_index += 1
@@ -414,6 +422,16 @@ platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, boo
 		mac_event_index = 0
 		if !poll_native || !app.running {
 			return {}, false
+		}
+		for window in app.windows {
+			if window.platform.zoom_pending && !window.close_requested {
+				window.platform.zoom_pending = false
+				// A frame callback can close the window during the animation.
+				handle := mac_send(objc.id, mac_receiver(window.platform.handle), "retain")
+				mac_send(nil, mac_receiver(handle), "zoom:", objc.id(nil))
+				mac_send(nil, mac_receiver(handle), "release")
+				continue poll
+			}
 		}
 		event := mac_application->nextEventMatchingMask(transmute(AppKit.EventMask)~u64(0),
 			NS.Date.distantPast(), NS.DefaultRunLoopMode, bool(true))
@@ -787,6 +805,9 @@ mac_window_resized :: proc "c" (view: objc.id, cmd: objc.SEL, note: objc.id) {
 	if window := mac_window_from_view(view); window != nil {
 		mac_resize_layer(window)
 		append(&mac_events, Platform_Event{kind = .Resize, window = window, timestamp = monotonic_ns()})
+		// AppKit can deliver intermediate sizes while the resize timer is
+		// blocked by a native window animation.
+		live_resize_frame(window)
 	}
 }
 
