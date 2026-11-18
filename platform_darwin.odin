@@ -11,6 +11,22 @@ import AppKit "vendor:darwin/AppKit"
 import CA "vendor:darwin/QuartzCore"
 import vk "vendor:vulkan"
 
+// Use the Objective-C library already linked by Odin's Darwin runtime.
+@(private="file", default_calling_convention="c")
+foreign _ {
+	objc_getClass :: proc(name: cstring) -> objc.Class ---
+	objc_allocateClassPair :: proc(superclass: objc.Class, name: cstring, extraBytes: uint) -> objc.Class ---
+	objc_registerClassPair :: proc(cls: objc.Class) ---
+	objc_disposeClassPair :: proc(cls: objc.Class) ---
+	objc_getProtocol :: proc(name: cstring) -> ^objc.Protocol ---
+	sel_registerName :: proc(name: cstring) -> objc.SEL ---
+	class_addMethod :: proc(cls: objc.Class, name: objc.SEL, imp: objc.IMP, types: cstring) -> objc.BOOL ---
+	class_addProtocol :: proc(cls: objc.Class, protocol: ^objc.Protocol) -> objc.BOOL ---
+	class_addIvar :: proc(cls: objc.Class, name: cstring, size: uint, alignment: u8, types: cstring) -> objc.BOOL ---
+	object_getInstanceVariable :: proc(obj: objc.id, name: cstring, outValue: ^rawptr) -> objc.Ivar ---
+	object_setInstanceVariable :: proc(obj: objc.id, name: cstring, value: rawptr) -> objc.Ivar ---
+}
+
 @(private="package")
 Platform_Window :: struct {
 	handle:     ^AppKit.Window,
@@ -82,12 +98,12 @@ platform_shutdown :: proc() {
 
 @(private="file")
 mac_install_menu :: proc() {
-	menu := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSMenu")), "new")
-	item := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSMenuItem")), "new")
-	submenu := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSMenu")), "new")
+	menu := mac_send(objc.id, mac_receiver(objc_getClass("NSMenu")), "new")
+	item := mac_send(objc.id, mac_receiver(objc_getClass("NSMenuItem")), "new")
+	submenu := mac_send(objc.id, mac_receiver(objc_getClass("NSMenu")), "new")
 	quit := mac_string("Quit")
 	key := mac_string("q")
-	mac_send(nil, mac_receiver(submenu), "addItemWithTitle:action:keyEquivalent:", quit, objc.sel_registerName("terminate:"), key)
+	mac_send(nil, mac_receiver(submenu), "addItemWithTitle:action:keyEquivalent:", quit, sel_registerName("terminate:"), key)
 	mac_send(nil, mac_receiver(menu), "addItem:", item)
 	mac_send(nil, mac_receiver(item), "setSubmenu:", submenu)
 	mac_send(nil, mac_receiver(mac_application), "setMainMenu:", menu)
@@ -103,18 +119,18 @@ mac_register_classes :: proc() -> bool {
 	if mac_view_class != nil {
 		return true
 	}
-	view := objc.objc_allocateClassPair(objc.objc_getClass("NSView"), "FluidContentView", 0)
-	delegate := objc.objc_allocateClassPair(objc.objc_getClass("NSObject"), "FluidApplicationDelegate", 0)
-	borderless := objc.objc_allocateClassPair(objc.objc_getClass("NSWindow"), "FluidBorderlessWindow", 0)
+	view := objc_allocateClassPair(objc_getClass("NSView"), "FluidContentView", 0)
+	delegate := objc_allocateClassPair(objc_getClass("NSObject"), "FluidApplicationDelegate", 0)
+	borderless := objc_allocateClassPair(objc_getClass("NSWindow"), "FluidBorderlessWindow", 0)
 	if view == nil || delegate == nil || borderless == nil ||
-	   !objc.class_addIvar(view, "_fluidWindow", size_of(rawptr), 3, "^v") {
+	   !class_addIvar(view, "_fluidWindow", size_of(rawptr), 3, "^v") {
 		classes := [?]objc.Class{view, delegate, borderless}
 		for cls in classes {
-			if cls != nil { objc.objc_disposeClassPair(cls) }
+			if cls != nil { objc_disposeClassPair(cls) }
 		}
 		return false
 	}
-	objc.class_addProtocol(view, objc.objc_getProtocol("NSTextInputClient"))
+	class_addProtocol(view, objc_getProtocol("NSTextInputClient"))
 	mac_method(view, "acceptsFirstResponder", cast(objc.IMP)mac_view_accepts_first_responder, "B@:")
 	mac_method(view, "keyDown:", cast(objc.IMP)mac_view_key_down, "v@:@")
 	mac_method(view, "mouseExited:", cast(objc.IMP)mac_mouse_exited, "v@:@")
@@ -142,9 +158,9 @@ mac_register_classes :: proc() -> bool {
 	mac_method(view, "doCommandBySelector:", cast(objc.IMP)mac_ignore_text_command, "v@::")
 	mac_method(delegate, "applicationShouldTerminate:", cast(objc.IMP)mac_should_terminate, "Q@:@")
 	mac_method(borderless, "canBecomeKeyWindow", cast(objc.IMP)mac_view_accepts_first_responder, "B@:")
-	objc.objc_registerClassPair(view)
-	objc.objc_registerClassPair(delegate)
-	objc.objc_registerClassPair(borderless)
+	objc_registerClassPair(view)
+	objc_registerClassPair(delegate)
+	objc_registerClassPair(borderless)
 	mac_view_class = view
 	mac_delegate_class = delegate
 	mac_borderless_class = borderless
@@ -153,7 +169,7 @@ mac_register_classes :: proc() -> bool {
 
 @(private="file")
 mac_method :: proc(class: objc.Class, name: cstring, method: objc.IMP, encoding: cstring) {
-	added := objc.class_addMethod(class, objc.sel_registerName(name), method, encoding)
+	added := class_addMethod(class, sel_registerName(name), method, encoding)
 	assert(added)
 }
 
@@ -161,7 +177,7 @@ mac_method :: proc(class: objc.Class, name: cstring, method: objc.IMP, encoding:
 platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	NS.scoped_autoreleasepool()
 	style: AppKit.WindowStyleMask = {.Titled, .Closable, .Miniaturizable, .Resizable}
-	class := objc.objc_getClass("NSWindow")
+	class := objc_getClass("NSWindow")
 	if window.custom_title_bar {
 		style += {.FullSizeContentView}
 	} else if .Borderless in config.flags {
@@ -182,7 +198,7 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	window.platform.handle = handle
 	view := mac_send(objc.id, mac_receiver(mac_view_class), "alloc")
 	view = mac_send(objc.id, mac_receiver(view), "initWithFrame:", bounds)
-	layer := mac_send(^CA.MetalLayer, mac_receiver(objc.objc_getClass("CAMetalLayer")), "layer")
+	layer := mac_send(^CA.MetalLayer, mac_receiver(objc_getClass("CAMetalLayer")), "layer")
 	if view == nil || layer == nil {
 		mac_send(nil, mac_receiver(view), "release")
 		platform_destroy_window(window)
@@ -190,7 +206,7 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	}
 	window.platform.view = view
 	window.platform.layer = layer
-	objc.object_setInstanceVariable(view, "_fluidWindow", window)
+	object_setInstanceVariable(view, "_fluidWindow", window)
 	mac_send(nil, mac_receiver(view), "setLayer:", layer)
 	mac_send(nil, mac_receiver(view), "setWantsLayer:", bool(true))
 	mac_send(nil, mac_receiver(handle), "setContentView:", view)
@@ -202,7 +218,7 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	}
 	mac_send(nil, mac_receiver(handle), "makeFirstResponder:", view)
 	mac_send(nil, mac_receiver(handle), "setAcceptsMouseMovedEvents:", bool(true))
-	track := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSTrackingArea")), "alloc")
+	track := mac_send(objc.id, mac_receiver(objc_getClass("NSTrackingArea")), "alloc")
 	track = mac_send(objc.id, mac_receiver(track), "initWithRect:options:owner:userInfo:", bounds,
 		AppKit.TrackingAreaOptions{.MouseEnteredAndExited, .ActiveAlways, .InVisibleRect, .EnabledDuringMouseDrag},
 		view, objc.id(nil))
@@ -211,7 +227,7 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	if .Transparent in config.flags {
 		mac_send(nil, mac_receiver(layer), "setOpaque:", bool(false))
 		mac_send(nil, mac_receiver(handle), "setOpaque:", bool(false))
-		transparent := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSColor")), "clearColor")
+		transparent := mac_send(objc.id, mac_receiver(objc_getClass("NSColor")), "clearColor")
 		mac_send(nil, mac_receiver(handle), "setBackgroundColor:", transparent)
 	}
 	title := mac_string(string(config.title))
@@ -303,7 +319,7 @@ platform_window_is_active :: proc(window: ^Window) -> bool {
 
 @(private="file")
 mac_desktop_top :: proc() -> f64 {
-	screens := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSScreen")), "screens")
+	screens := mac_send(objc.id, mac_receiver(objc_getClass("NSScreen")), "screens")
 	first := mac_send(objc.id, mac_receiver(screens), "firstObject")
 	frame := mac_send(NS.Rect, mac_receiver(first), "frame")
 	return frame.origin.y + frame.size.height
@@ -363,7 +379,7 @@ platform_window_scales :: proc(window: ^Window) -> (f32, f32) {
 platform_window_refresh_rate :: proc(window: ^Window) -> u64 {
 	NS.scoped_autoreleasepool()
 	screen := mac_send(^AppKit.Screen, mac_receiver(window.platform.handle), "screen")
-	selector := objc.sel_registerName("maximumFramesPerSecond")
+	selector := sel_registerName("maximumFramesPerSecond")
 	if mac_send(bool, mac_receiver(screen), "respondsToSelector:", selector) {
 		rate := mac_send(NS.Integer, mac_receiver(screen), "maximumFramesPerSecond")
 		if rate > 0 {
@@ -488,7 +504,7 @@ mac_title_bar_press :: proc(window: ^Window, event: ^AppKit.Event) {
 		mac_send(nil, handle, "performWindowDragWithEvent:", event)
 		return
 	}
-	defaults := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSUserDefaults")), "standardUserDefaults")
+	defaults := mac_send(objc.id, mac_receiver(objc_getClass("NSUserDefaults")), "standardUserDefaults")
 	key := mac_string("AppleActionOnDoubleClick")
 	defer mac_send(nil, mac_receiver(key), "release")
 	preference := mac_send(^NS.String, mac_receiver(defaults), "stringForKey:", key)
@@ -503,8 +519,8 @@ mac_title_bar_press :: proc(window: ^Window, event: ^AppKit.Event) {
 @(private="package")
 platform_mouse_window :: proc(app: ^UI) -> ^Window {
 	NS.scoped_autoreleasepool()
-	mouse := mac_send(NS.Point, mac_receiver(objc.objc_getClass("NSEvent")), "mouseLocation")
-	number := mac_send(NS.Integer, mac_receiver(objc.objc_getClass("NSWindow")), "windowNumberAtPoint:belowWindowWithWindowNumber:",
+	mouse := mac_send(NS.Point, mac_receiver(objc_getClass("NSEvent")), "mouseLocation")
+	number := mac_send(NS.Integer, mac_receiver(objc_getClass("NSWindow")), "windowNumberAtPoint:belowWindowWithWindowNumber:",
 		mouse, NS.Integer(0))
 	for window in app.windows {
 		if number == mac_send(NS.Integer, mac_receiver(window.platform.handle), "windowNumber") {
@@ -517,7 +533,7 @@ platform_mouse_window :: proc(app: ^UI) -> ^Window {
 @(private="package")
 platform_mouse_state :: proc() -> ([2]f32, bool) {
 	NS.scoped_autoreleasepool()
-	class := objc.objc_getClass("NSEvent")
+	class := objc_getClass("NSEvent")
 	mouse := mac_send(NS.Point, mac_receiver(class), "mouseLocation")
 	buttons := mac_send(NS.UInteger, mac_receiver(class), "pressedMouseButtons")
 	return {f32(mouse.x), f32(mac_desktop_top() - mouse.y)}, buttons & 1 != 0
@@ -542,7 +558,7 @@ platform_set_cursor :: proc(app: ^UI, cursor: Cursor) {
 			return
 		}
 	}
-	class := objc.objc_getClass("NSCursor")
+	class := objc_getClass("NSCursor")
 	shape: objc.id
 	switch cursor {
 	case .Default: shape = mac_send(objc.id, mac_receiver(class), "arrowCursor")
@@ -712,7 +728,7 @@ mac_set_title_bar_hidden :: proc(window: ^AppKit.Window, hidden: bool) {
 
 @(private="file")
 mac_string :: proc(value: string) -> ^NS.String {
-	object := mac_send(^NS.String, mac_receiver(objc.objc_getClass("NSString")), "alloc")
+	object := mac_send(^NS.String, mac_receiver(objc_getClass("NSString")), "alloc")
 	return mac_send(^NS.String, mac_receiver(object), "initWithBytes:length:encoding:",
 		raw_data(value), NS.UInteger(len(value)), NS.StringEncoding(NS.UTF8StringEncoding))
 }
@@ -728,7 +744,7 @@ mac_copy_text :: proc(value: ^NS.String) -> string {
 @(private="file")
 mac_window_from_view :: proc "contextless" (view: objc.id) -> ^Window {
 	pointer: rawptr
-	objc.object_getInstanceVariable(view, "_fluidWindow", &pointer)
+	object_getInstanceVariable(view, "_fluidWindow", &pointer)
 	return cast(^Window)pointer
 }
 
@@ -743,7 +759,7 @@ mac_view_key_down :: proc "c" (view: objc.id, cmd: objc.SEL, event: objc.id) {
 	if window != nil && window.platform.text_input {
 		flags := mac_send(AppKit.EventModifierFlags, mac_receiver(event), "modifierFlags")
 		if .Command not_in flags && .Control not_in flags {
-			events := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSArray")), "arrayWithObject:", event)
+			events := mac_send(objc.id, mac_receiver(objc_getClass("NSArray")), "arrayWithObject:", event)
 			mac_send(nil, mac_receiver(view), "interpretKeyEvents:", events)
 		}
 	}
@@ -790,11 +806,11 @@ mac_window_live_resize_started :: proc "c" (view: objc.id, cmd: objc.SEL, note: 
 		return
 	}
 	interval := 1 / f64(platform_window_refresh_rate(window))
-	timer := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSTimer")),
+	timer := mac_send(objc.id, mac_receiver(objc_getClass("NSTimer")),
 		"timerWithTimeInterval:target:selector:userInfo:repeats:", interval, view,
-		objc.sel_registerName("fluidLiveResizeTick:"), objc.id(nil), bool(true))
+		sel_registerName("fluidLiveResizeTick:"), objc.id(nil), bool(true))
 	window.platform.live_resize_timer = timer
-	loop := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSRunLoop")), "mainRunLoop")
+	loop := mac_send(objc.id, mac_receiver(objc_getClass("NSRunLoop")), "mainRunLoop")
 	mac_send(nil, mac_receiver(loop), "addTimer:forMode:", timer, NS.RunLoopCommonModes)
 }
 
@@ -841,7 +857,7 @@ mac_mouse_exited :: proc "c" (view: objc.id, cmd: objc.SEL, event: objc.id) {
 
 @(private="file")
 mac_plain_string :: proc "contextless" (value: objc.id) -> ^NS.String {
-	if mac_send(bool, mac_receiver(value), "isKindOfClass:", objc.objc_getClass("NSAttributedString")) {
+	if mac_send(bool, mac_receiver(value), "isKindOfClass:", objc_getClass("NSAttributedString")) {
 		return mac_send(^NS.String, mac_receiver(value), "string")
 	}
 	return cast(^NS.String)value
@@ -935,7 +951,7 @@ mac_selected_range :: proc "c" (view: objc.id, cmd: objc.SEL) -> NS.Range {
 
 @(private="file")
 mac_valid_attributes :: proc "c" (view: objc.id, cmd: objc.SEL) -> objc.id {
-	return mac_send(objc.id, mac_receiver(objc.objc_getClass("NSArray")), "array")
+	return mac_send(objc.id, mac_receiver(objc_getClass("NSArray")), "array")
 }
 
 @(private="file")
@@ -952,7 +968,7 @@ mac_attributed_substring :: proc "c" (view: objc.id, cmd: objc.SEL, bounds: NS.R
 	range := NS.Range{bounds.location, min(bounds.length, length - bounds.location)}
 	if actual != nil { actual^ = range }
 	substring := mac_send(objc.id, mac_receiver(str), "substringWithRange:", range)
-	result := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSAttributedString")), "alloc")
+	result := mac_send(objc.id, mac_receiver(objc_getClass("NSAttributedString")), "alloc")
 	result = mac_send(objc.id, mac_receiver(result), "initWithString:", substring)
 	return mac_send(objc.id, mac_receiver(result), "autorelease")
 }
