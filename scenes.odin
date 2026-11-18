@@ -56,7 +56,8 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
 		offset := window_position(source.window) - window_position(destination.window)
 		element.pins = translated(element.pins, offset)
 		element.motion.from = translated(element.motion.from, offset)
-		release_text(element)
+		detach_input(app, id)
+		release_element_text(element)
 	}
 	remove_id(&source.members, id)
 	append(&destination.members, id)
@@ -78,6 +79,7 @@ is_active :: proc(app: ^UI, id: Element_ID) -> bool {
 
 @(private="package")
 deactivate_element :: proc(app: ^UI, id: Element_ID) {
+	detach_input(app, id)
 	remove_id(&app.active, id)
 	if app.hovered == id {
 		app.hovered = NO_ELEMENT

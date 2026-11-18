@@ -1,6 +1,7 @@
 package main
 
 import fluid "../.."
+import "../../elements"
 
 Catalog_Product :: struct {
 	name, finish, price, description: string,
@@ -40,7 +41,7 @@ Catalog_Card :: struct {
 }
 
 Catalog :: struct {
-	navigation, scrim, back, chevron: fluid.Element_ID,
+	navigation, scrim, back: fluid.Element_ID,
 	cards: [len(CATALOG_PRODUCTS)]Catalog_Card,
 	selected: Maybe(int),
 	reveal: f32,
@@ -54,24 +55,25 @@ create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 	catalog.navigation = app.sidebar
 	scene := fluid.create_scene(ui.window)
 	append(&entry.scenes, scene)
-	catalog.scrim = fluid.panel(scene, {}, {})
+	catalog.scrim = elements.panel(scene, {}, {})
 	fluid.set_pointer_behavior(ui, catalog.scrim, .Block)
-	catalog.back = fluid.button(scene, {}, "")
-	catalog.chevron = demo_text(scene, {}, "‹", .Title, INK, .Center)
+	catalog.back = elements.button(scene, {}, "‹ Back")
 	fluid.set_style(ui, catalog.back, {radius = 1.25})
 	fluid.on_press(ui, catalog.back, catalog, close_catalog_card)
 
 	for product, index in CATALOG_PRODUCTS {
 		card := &catalog.cards[index]
-		card.parts[.Surface] = fluid.panel(scene, {}, SURFACE)
+		card.parts[.Surface] = elements.button(scene, {}, "")
+		fluid.set_color(ui, card.parts[.Surface], SURFACE)
+		fluid.set_draw(ui, card.parts[.Surface], fluid.draw_default)
 		fluid.on_press(ui, card.parts[.Surface], catalog, open_catalog_card)
-		card.parts[.Backdrop] = fluid.panel(scene, {}, product.backdrop)
-		card.parts[.Shell] = fluid.panel(scene, {}, product.shell)
-		card.parts[.Grille] = fluid.panel(scene, {}, product.grille)
+		card.parts[.Backdrop] = elements.panel(scene, {}, product.backdrop)
+		card.parts[.Shell] = elements.panel(scene, {}, product.shell)
+		card.parts[.Grille] = elements.panel(scene, {}, product.grille)
 		for slot in Catalog_Part.Slot_Top..=Catalog_Part.Slot_Bottom {
-			card.parts[slot] = fluid.panel(scene, {}, product.shell)
+			card.parts[slot] = elements.panel(scene, {}, product.shell)
 		}
-		card.parts[.Light] = fluid.panel(scene, {}, product.accent)
+		card.parts[.Light] = elements.panel(scene, {}, product.accent)
 		card.parts[.Name] = demo_text(scene, {}, product.name, .Heading, weight = .Bold)
 		card.parts[.Finish] = demo_text(scene, {}, product.finish, .Caption, MUTED)
 		card.parts[.Price] = demo_text(scene, {}, product.price, align = .Right)
@@ -101,7 +103,6 @@ open_catalog_card :: proc(catalog: ^Catalog, ui: ^fluid.UI, id: fluid.Element_ID
 			for part in card.parts { fluid.bring_to_front(ui, part) }
 			for spec in card.specs { fluid.bring_to_front(ui, spec) }
 			fluid.bring_to_front(ui, catalog.back)
-			fluid.bring_to_front(ui, catalog.chevron)
 			return
 		}
 	}
@@ -226,7 +227,9 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 	delta := f32(dt / CATALOG_DURATION)
 	if !catalog.opening { delta = -delta }
 	catalog.reveal = clamp(catalog.reveal + delta, 0, 1)
+	closed: Maybe(int)
 	if !catalog.opening && catalog.reveal == 0 {
+		closed = catalog.selected
 		catalog.selected = nil
 	}
 
@@ -240,8 +243,8 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 	index, selected := catalog.selected.?
 	fluid.set_layout(ui, catalog.scrim, selected ? viewport : fluid.Pins{})
 	fluid.set_color(ui, catalog.scrim, {8, 12, 18, u8(190 * smoothstep(catalog.reveal))})
+	back_was_visible := fluid.width(fluid.bounds(ui, catalog.back)) > 0
 	fluid.set_layout(ui, catalog.back, {})
-	fluid.set_layout(ui, catalog.chevron, {})
 
 	for product, i in CATALOG_PRODUCTS {
 		card := &catalog.cards[i]
@@ -256,11 +259,13 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 			if reveal > 0.78 {
 				art := layout[.Backdrop]
 				alpha := u8(255 * smoothstep((reveal - 0.78) / 0.22))
-				back := fluid.rect(art.left + 0.75, art.top + 0.75, 2.5, 2.5)
+				back := fluid.rect(art.left + 0.75, art.top + 0.75, 4.75, 2.5)
 				fluid.set_layout(ui, catalog.back, back)
-				fluid.set_layout(ui, catalog.chevron, fluid.translated(back, {0, -0.27}))
+				if !back_was_visible && fluid.has_focus(ui, card.parts[.Surface]) {
+					fluid.focus(ui, catalog.back)
+				}
 				fluid.set_color(ui, catalog.back, {24, 33, 45, alpha})
-				fluid.set_text_style(ui, catalog.chevron, .Title, {INK.r, INK.g, INK.b, alpha})
+				fluid.set_text_style(ui, catalog.back, .Body, {INK.r, INK.g, INK.b, alpha})
 			}
 		}
 		layout_catalog_art(ui, card, &layout, progress)
@@ -272,9 +277,13 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 			radius = 1.125 * (1 - progress),
 			border = EDGE,
 			hover_border = MUTED,
+			focus_border = MINT,
 			border_width = 0.0625 * (1 - progress),
 			shadow = 0.35 * (1 - progress),
 		})
 		layout_catalog_specs(ui, card, layout[.Description], reveal)
+	}
+	if closed_index, did_close := closed.?; did_close && fluid.has_focus(ui, catalog.back) {
+		fluid.focus(ui, catalog.cards[closed_index].parts[.Surface])
 	}
 }

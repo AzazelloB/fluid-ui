@@ -89,71 +89,91 @@ text_line_height :: proc(window: ^Window, size: Text_Size = .Body, weight: Text_
 	return f32(ttf.GetFontLineSkip(window.fonts[weight][size])) / scale
 }
 
-@(private="package")
-update_cached_label :: proc(element: ^Element) {
-	if element.text == nil {
-		return
+// Borrow the window font for the requested style.
+text_font :: proc(window: ^Window, size: Text_Size, weight: Text_Weight) -> ^ttf.Font {
+	return window.fonts[weight][size]
+}
+
+// Cached text tied to an element follows its style and renderer lifetime.
+element_text :: proc(view: Element_View, placeholder: string = "") -> ^ttf.Text {
+	element := get_element(view.ui, view.id)
+	content := element.label != "" ? element.label : placeholder
+	if content == "" {
+		return nil
 	}
-	if len(element.label) == 0 {
-		release_text(element)
-		return
+	return cached_text(view.window, &element.text, text_font(view.window, element.text_size, element.text_weight), content)
+}
+
+// Create a renderer text object on first use.
+cached_text :: proc(window: ^Window, cache: ^^ttf.Text, font: ^ttf.Font, label: string) -> ^ttf.Text {
+	if cache^ == nil {
+		cache^ = ttf.CreateText(window.text_engine, font, raw_data(label), len(label))
 	}
-	assert(ttf.SetTextString(element.text, raw_data(element.label), len(element.label)))
+	return cache^
 }
 
 @(private="package")
-draw_label :: proc(window: ^Window, element: ^Element, rect: Pins) {
-	if element.text == nil {
-		font := window.fonts[element.text_weight][element.text_size]
-		element.text = ttf.CreateText(window.text_engine, font, raw_data(element.label), len(element.label))
-		assert(element.text != nil)
+update_cached_text :: proc(cache: ^^ttf.Text, label: string) {
+	if cache^ == nil {
+		return
 	}
+	if label == "" {
+		release_cached_text(cache)
+		return
+	}
+	assert(ttf.SetTextString(cache^, raw_data(label), len(label)))
+}
+
+// Set a text object’s wrap width in physical pixels.
+set_wrap_width :: proc(text: ^ttf.Text, pixels: i32) -> bool {
+	previous: i32
+	return ttf.GetTextWrapWidth(text, &previous) &&
+		(previous == pixels || ttf.SetTextWrapWidth(text, pixels))
+}
+
+// Draw text at a physical pixel position.
+paint_text :: proc(text: ^ttf.Text, color: Color, x, y: f32) -> bool {
+	colored := ttf.SetTextColor(text, color.r, color.g, color.b, color.a)
+	drawn := ttf.DrawRendererText(text, x, y)
+	return colored && drawn
+}
+
+// Draw text in UI-unit bounds with alignment and wrapping.
+draw_label :: proc(window: ^Window, text: ^ttf.Text, rect: Pins, color: Color,
+	align: Text_Align = .Center, wrap: bool = false,
+) {
+	assert(text != nil)
 	scale := pixel_scale(window)
-	wrap_pixels: i32
-	if element.text_wrap {
-		wrap_pixels = wrap_width_pixels(width(rect), scale)
-	}
-	previous_wrap: i32
-	assert(ttf.GetTextWrapWidth(element.text, &previous_wrap))
-	if wrap_pixels != previous_wrap {
-		assert(ttf.SetTextWrapWidth(element.text, wrap_pixels))
-	}
+	assert(set_wrap_width(text, wrap ? wrap_width_pixels(width(rect), scale) : 0))
 	pixel_width, pixel_height: i32
-	assert(ttf.GetTextSize(element.text, &pixel_width, &pixel_height))
+	assert(ttf.GetTextSize(text, &pixel_width, &pixel_height))
 	x := rect.left * scale
-	switch element.text_align {
+	switch align {
 	case .Left:
 	case .Center: x += (width(rect) * scale - f32(pixel_width)) / 2
 	case .Right: x = rect.right * scale - f32(pixel_width)
 	}
-	color := element.text_color
-	assert(ttf.SetTextColor(element.text, color.r, color.g, color.b, color.a))
-	if element.text_wrap {
-		draw_wrapped_label(window, element.text, rect, math.round(x), scale)
+	if wrap {
+		renderer := window.renderer
+		left := i32(math.round(rect.left * scale))
+		top := i32(math.round(rect.top * scale))
+		clip := sdl3.Rect{left, top, max(i32(0), i32(math.round(rect.right * scale)) - left),
+			max(i32(0), i32(math.round(rect.bottom * scale)) - top)}
+		assert(sdl3.SetRenderClipRect(renderer, &clip))
+		assert(paint_text(text, color, math.round(x), f32(top)))
+		assert(sdl3.SetRenderClipRect(renderer, nil))
 	} else {
 		y := math.round(rect.top * scale + (height(rect) * scale - f32(pixel_height)) / 2)
-		assert(ttf.DrawRendererText(element.text, math.round(x), y))
+		assert(paint_text(text, color, math.round(x), y))
 	}
 }
 
-@(private="package")
-draw_wrapped_label :: proc(window: ^Window, text: ^ttf.Text, rect: Pins, x, scale: f32) {
-	renderer := window.renderer
-	left := i32(math.round(rect.left * scale))
-	top := i32(math.round(rect.top * scale))
-	clip := sdl3.Rect{left, top, max(i32(0), i32(math.round(rect.right * scale)) - left),
-		max(i32(0), i32(math.round(rect.bottom * scale)) - top)}
-	assert(sdl3.SetRenderClipRect(renderer, &clip))
-	assert(ttf.DrawRendererText(text, x, f32(top)))
-	assert(sdl3.SetRenderClipRect(renderer, nil))
-}
-
-@(private="package")
-release_text :: proc(element: ^Element) {
-	if element.text != nil {
-		ttf.DestroyText(element.text)
+// Release text before its renderer or font is replaced.
+release_cached_text :: proc(cache: ^^ttf.Text) {
+	if cache^ != nil {
+		ttf.DestroyText(cache^)
+		cache^ = nil
 	}
-	element.text = nil
 }
 
 // Cached labels belong to the text engine that drew them.
@@ -161,7 +181,15 @@ release_text :: proc(element: ^Element) {
 release_window_text :: proc(window: ^Window) {
 	for scene in window.scenes {
 		for id in scene.members {
-			release_text(get_element(window.ui, id))
+			release_element_text(get_element(window.ui, id))
 		}
+	}
+}
+
+@(private="package")
+release_element_text :: proc(element: ^Element) {
+	release_cached_text(&element.text)
+	if element.behavior.release_graphics != nil {
+		element.behavior.release_graphics(element.behavior.state)
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import "core:fmt"
 import fluid "../.."
+import "../../elements"
 import "vendor:sdl3"
 
 Dock :: enum {Left, Right, Bottom}
@@ -11,7 +12,7 @@ DOCK_HIGHLIGHT :: fluid.Color{42, 85, 77, 255}
 
 Docking :: struct {
 	targets, card_scene:         ^fluid.Scene,
-	area, card:                 fluid.Element_ID,
+	area, card, placement:      fluid.Element_ID,
 	navigation:                 fluid.Element_ID,
 	docked:                     Maybe(Dock),
 	zones:                      [Dock]fluid.Element_ID,
@@ -30,6 +31,8 @@ create_docking :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 	page.card_scene = fluid.create_scene(ui.window)
 	append(&entry.scenes, scene, page.card_scene)
 	page.area = demo_surface(scene, {}, radius = 1.25)
+	page.placement = elements.options(scene, {}, {"Free", "Left", "Right", "Bottom"}, 0)
+	elements.on_change(ui, page.placement, page, choose_dock)
 	labels := [Dock]string{.Left = "Left", .Right = "Right", .Bottom = "Bottom"}
 	for dock in Dock {
 		page.zones[dock] = demo_surface(page.targets, {}, DOCK_COLOR)
@@ -38,7 +41,7 @@ create_docking :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 	}
 	layout_docking(page, ui, fluid.bounds(ui, ui.window.viewport))
 	area := fluid.bounds(ui, page.area)
-	page.card = fluid.draggable_panel(page.card_scene, card_at({area.left + 12.25, area.top + 3}), {54, 103, 91, 255})
+	page.card = elements.draggable_panel(page.card_scene, card_at({area.left + 12.25, area.top + 4}), {54, 103, 91, 255})
 	fluid.set_label(ui, page.card, "Drag")
 	fluid.set_style(ui, page.card, {radius = 1, border = {120, 188, 161, 255}, border_width = 0.0625, shadow = 1})
 	fluid.on_update(ui, page.area, page, update_docking)
@@ -105,6 +108,7 @@ return_card :: proc(page: ^Docking, ui: ^fluid.UI) {
 
 dock_card :: proc(page: ^Docking, ui: ^fluid.UI, dock: Dock) {
 	page.docked = dock
+	elements.set_choice(ui, page.placement, int(dock) + 1)
 	fluid.set_label(ui, page.card, dock == .Bottom ? "Horizontal card" : "Vertical card")
 	fluid.animate_to(ui, page.card, fluid.bounds(ui, page.zones[dock]), damped_animation(0.4))
 }
@@ -112,9 +116,20 @@ dock_card :: proc(page: ^Docking, ui: ^fluid.UI, dock: Dock) {
 reset_card :: proc(page: ^Docking, ui: ^fluid.UI) {
 	return_card(page, ui)
 	page.docked = nil
+	elements.set_choice(ui, page.placement, 0)
 	area := fluid.bounds(ui, page.area)
-	fluid.set_layout(ui, page.card, card_at({area.left + 12.25, area.top + 3}))
+	fluid.set_layout(ui, page.card, card_at({area.left + 12.25, area.top + 4}))
 	fluid.set_label(ui, page.card, "Drag")
+}
+
+choose_dock :: proc(page: ^Docking, ui: ^fluid.UI, change: elements.Control_Change) {
+	index := change.value.(int)
+	if index == 0 {
+		reset_card(page, ui)
+		return
+	}
+	return_card(page, ui)
+	dock_card(page, ui, Dock(index - 1))
 }
 
 leave_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
@@ -129,11 +144,12 @@ leave_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 layout_docking :: proc(page: ^Docking, ui: ^fluid.UI, viewport: fluid.Pins) {
 	area := content_pins(ui, page.navigation, viewport)
 	fluid.set_target(ui, page.area, area)
+	fluid.set_target(ui, page.placement, fluid.rect(area.left + 0.75, area.top + 0.75, 21, 2.25))
 	fluid.set_target(ui, page.zones[.Left], {
-		left = area.left + 0.75, top = area.top + 0.75, right = area.left + 10.75, bottom = area.bottom - 8.5,
+		left = area.left + 0.75, top = area.top + 3.75, right = area.left + 10.75, bottom = area.bottom - 8.5,
 	})
 	fluid.set_target(ui, page.zones[.Right], {
-		left = area.right - 10.75, top = area.top + 0.75, right = area.right - 0.75, bottom = area.bottom - 8.5,
+		left = area.right - 10.75, top = area.top + 3.75, right = area.right - 0.75, bottom = area.bottom - 8.5,
 	})
 	fluid.set_target(ui, page.zones[.Bottom], {
 		left = area.left + 0.75, top = area.bottom - 7, right = area.right - 0.75, bottom = area.bottom - 0.75,
@@ -163,6 +179,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		r := fluid.bounds(ui, page.card)
 		mouse := fluid.pointer_position(owner)
 		page.docked = nil
+		elements.set_choice(ui, page.placement, 0)
 		page.drag_origin = fluid.window_position(owner) + mouse
 		page.drag_moved = false
 		page.detach_failed = false

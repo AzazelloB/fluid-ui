@@ -17,7 +17,7 @@ set_pointer_behavior :: proc(app: ^UI, id: Element_ID, behavior: Pointer_Behavio
 
 @(private="package")
 accepts_press :: proc(element: ^Element) -> bool {
-	return element.kind == .Button || element.press.call != nil
+	return element.pressable || element.press.call != nil
 }
 
 @(private="package")
@@ -28,7 +28,7 @@ hit_test :: proc(app: ^UI, window: ^Window, point: [2]f32) -> Element_ID {
 		if coordinate_window(element) != window || element.pointer == .Pass {
 			continue
 		}
-		if element.pointer == .Auto && !element.draggable && !accepts_press(element) {
+		if element.pointer == .Auto && !element.draggable && !accepts_press(element) && !element.focusable && element.behavior.input == nil {
 			continue
 		}
 		if contains(element_bounds(element), point) {
@@ -57,16 +57,31 @@ refresh_hover :: proc(app: ^UI) {
 }
 
 @(private="package")
-press_at :: proc(app: ^UI, window: ^Window, point: [2]f32) {
+press_at :: proc(app: ^UI, window: ^Window, event: sdl3.MouseButtonEvent) {
+	point := [2]f32{event.x, event.y} / UI_UNIT_POINTS
 	id := hit_test(app, window, point)
+	focus_id := NO_ELEMENT
+	if id != NO_ELEMENT && can_focus(get_element(app, id)) {
+		focus_id = id
+	}
+	change_focus(app, focus_id, true)
+	id = hit_test(app, window, point)
 	app.pressed = NO_ELEMENT
 	if id == NO_ELEMENT {
 		return
 	}
 	element := get_element(app, id)
-	if accepts_press(element) {
+	if accepts_press(element) || element.behavior.input != nil {
 		app.pressed = id
-		append(&app.events, id)
+	}
+	if send_element_event(app, id, Pointer_Event{
+		kind = .Down, point = point, timestamp = event.timestamp, clicks = event.clicks, inside = true,
+	}) || !is_active(app, id) {
+		return
+	}
+	element = get_element(app, id)
+	if accepts_press(element) {
+		queue_press(app, id)
 	}
 	if element.draggable {
 		r := element_bounds(element)
@@ -84,21 +99,55 @@ requests :: proc(app: ^UI) {
 		#partial switch event.type {
 		case .QUIT:
 			app.running = false
-		case .KEY_DOWN:
-			if event.key.key == sdl3.K_ESCAPE {
+		case .KEY_DOWN, .KEY_UP:
+			window := find_window(app, event.key.windowID)
+			if window != nil && !handle_key(app, window, event.key) &&
+			   event.type == .KEY_DOWN && event.key.key == sdl3.K_ESCAPE {
 				app.running = false
+			}
+		case .TEXT_EDITING, .TEXT_INPUT:
+			if event.type == .TEXT_EDITING {
+				if id := focused_in(app, find_window(app, event.edit.windowID)); id != NO_ELEMENT {
+					send_element_event(app, id, event.edit)
+				}
+			} else if id := focused_in(app, find_window(app, event.text.windowID)); id != NO_ELEMENT {
+				send_element_event(app, id, event.text)
+			}
+		case .MOUSE_WHEEL:
+			if window := find_window(app, event.wheel.windowID); window != nil {
+				point := [2]f32{event.wheel.mouse_x, event.wheel.mouse_y} / UI_UNIT_POINTS
+				if id := hit_test(app, window, point); id != NO_ELEMENT {
+					steps := event.wheel.direction == .FLIPPED ? -event.wheel.y : event.wheel.y
+					send_element_event(app, id, Wheel_Event(steps))
+				}
+			}
+		case .MOUSE_MOTION:
+			if window := find_window(app, event.motion.windowID); window != nil {
+				point := [2]f32{event.motion.x, event.motion.y} / UI_UNIT_POINTS
+				deliver_pointer(app, window, point, event.motion.timestamp, false)
+			}
+		case .WINDOW_MOUSE_LEAVE:
+			if app.captured == NO_ELEMENT && app.pressed != NO_ELEMENT &&
+			   element_window(app, app.pressed) == find_window(app, event.window.windowID) {
+				send_element_event(app, app.pressed, Pointer_Event{kind = .Cancel, timestamp = event.window.timestamp})
 			}
 		case .MOUSE_BUTTON_DOWN:
 			window := find_window(app, event.button.windowID)
 			if window == nil || event.button.button != sdl3.BUTTON_LEFT {
 				continue
 			}
-			press_at(app, window, [2]f32{event.button.x, event.button.y} / UI_UNIT_POINTS)
+			press_at(app, window, event.button)
 		case .MOUSE_BUTTON_UP:
 			if event.button.button == sdl3.BUTTON_LEFT {
 				window := find_window(app, event.button.windowID)
-				if window != nil && app.drag.element != NO_ELEMENT {
-					move_drag(app, window_position(window) + [2]f32{event.button.x, event.button.y} / UI_UNIT_POINTS)
+				if window != nil {
+					point := [2]f32{event.button.x, event.button.y} / UI_UNIT_POINTS
+					deliver_pointer(app, window, point, event.button.timestamp, true)
+					if app.drag.element != NO_ELEMENT {
+						move_drag(app, window_position(window) + point)
+					}
+				} else if id := pointer_target(app); id != NO_ELEMENT {
+					cancel_pointer(app, id)
 				}
 				app.pressed = NO_ELEMENT
 				end_drag(app)
@@ -122,9 +171,19 @@ requests :: proc(app: ^UI) {
 				sync_viewport(window)
 			}
 		case .WINDOW_FOCUS_LOST:
+			window := find_window(app, event.window.windowID)
+			if id := pointer_target(app); id != NO_ELEMENT && element_window(app, id) == window {
+				cancel_pointer(app, id)
+			}
 			app.pressed = NO_ELEMENT
+			if focused_in(app, window) != NO_ELEMENT {
+				blur(app)
+			}
 			// Cross-window drags continue until global button state reports release.
 		}
+	}
+	if app.focused != NO_ELEMENT {
+		send_element_event(app, app.focused, Focused_Frame(sdl3.GetTicksNS()))
 	}
 	if app.drag.element != NO_ELEMENT {
 		mouse: [2]f32

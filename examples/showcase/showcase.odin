@@ -1,6 +1,7 @@
 package main
 
 import fluid "../.."
+import "../../elements"
 
 Showcase :: struct {
 	launch:        Launch_Reveal,
@@ -10,6 +11,7 @@ Showcase :: struct {
 	conversations: Conversations,
 	docking:       Docking,
 	catalog:       Catalog,
+	controls:      Controls,
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
@@ -19,15 +21,16 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 		{title = "Transitions", create = create_conversations},
 		{title = "Docking", create = create_docking, leave = leave_docking},
 		{title = "Catalog", create = create_catalog, leave = leave_catalog},
+		{title = "Controls", create = create_controls},
 	}
 	fluid.create_pages(&app.pages, ui, app, definitions[:])
 	start_launch_reveal(&app.launch, ui.window)
 	navigation := fluid.create_scene(ui.window)
 	viewport := fluid.bounds(ui, ui.window.viewport)
 	width := navigation_width(app, ui)
-	app.sidebar = fluid.panel(navigation, {right = width, bottom = viewport.bottom}, {21, 29, 40, 255})
+	app.sidebar = elements.panel(navigation, {right = width, bottom = viewport.bottom}, {21, 29, 40, 255})
 	for page, index in app.pages.entries {
-		tab := fluid.button(navigation, tab_pins(width, index), page.title)
+		tab := elements.button(navigation, tab_pins(width, index), page.title, .Secondary)
 		fluid.set_text_style(ui, tab, .Body, INK)
 		fluid.bind_page_tab(&app.pages, index, tab)
 	}

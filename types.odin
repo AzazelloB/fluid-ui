@@ -18,15 +18,17 @@ text_size_units :: proc(size: Text_Size) -> f32 {
 Text_Align :: enum {Center, Left, Right}
 Text_Weight :: enum {Regular, Bold}
 
+Corner :: enum {Top_Right, Bottom_Right, Bottom_Left, Top_Left}
+
 Style :: struct {
 	radius: f32,
 	border: Color,
 	border_width: f32,
 	shadow: f32,
-	hover_border: Maybe(Color),
+	hover_border, focus_border: Maybe(Color),
+	square_corners: bit_set[Corner],
 }
 
-Element_Kind :: enum {Panel, Button, Label}
 Pointer_Behavior :: enum {Auto, Pass, Block}
 Color :: sdl3.Color
 
@@ -54,7 +56,6 @@ Element :: struct {
 	generation:    u32,
 	alive:         bool,
 	space:         ^Window, // Viewport sources have no scene.
-	kind:          Element_Kind,
 	pins:          Pins,
 	color:         sdl3.Color,
 	label:         string,
@@ -66,6 +67,11 @@ Element :: struct {
 	text_color:    Color,
 	text:          ^ttf.Text,
 	selected:      bool,
+	focusable:     bool,
+	behavior:      Element_Behavior,
+	draw:          Element_Draw,
+	cursor:        Cursor,
+	surface, pressable: bool,
 	draggable:     bool,
 	pointer:       Pointer_Behavior,
 	owner:         ^Scene,

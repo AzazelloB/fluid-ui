@@ -1,19 +1,38 @@
 package fluid
 
-import "core:mem"
 import "core:os"
 import "core:strings"
 
-@(private="package")
-add_element :: proc(scene: ^Scene, definition: Element) -> Element_ID {
+Element_Definition :: struct {
+	pins: Pins,
+	label: string,
+	color: Color,
+	style: Style,
+	surface, pressable, focusable, draggable: bool,
+	cursor: Cursor,
+	behavior: Element_Behavior,
+	draw: Element_Draw,
+}
+
+// The engine owns the element and copies its label. An attached behavior can
+// supply its own state, event handling, and resource cleanup.
+create_element :: proc(scene: ^Scene, definition: Element_Definition) -> Element_ID {
 	app := scene.ui
-	element := definition
-	element.owner = scene
-	element.pins = checked_pins(element.pins)
-	if element.text_color == (Color{}) {
-		element.text_color = DEFAULT_TEXT_COLOR
+	element := Element{
+		owner = scene,
+		pins = checked_pins(definition.pins),
+		label = strings.clone(definition.label, os.heap_allocator()),
+		color = definition.color,
+		style = definition.style,
+		text_color = DEFAULT_TEXT_COLOR,
+		surface = definition.surface,
+		pressable = definition.pressable,
+		focusable = definition.focusable,
+		draggable = definition.draggable,
+		cursor = definition.cursor,
+		behavior = definition.behavior,
+		draw = definition.draw,
 	}
-	element.label = strings.clone(definition.label, os.heap_allocator())
 	id := register_element(app, element)
 	append(&scene.members, id)
 	if scene.active {
@@ -30,7 +49,7 @@ set_label :: proc(app: ^UI, id: Element_ID, text: string) {
 	}
 	previous := element.label
 	element.label = strings.clone(text, os.heap_allocator())
-	update_cached_label(element)
+	update_cached_text(&element.text, element.label)
 	delete(previous, os.heap_allocator())
 }
 
@@ -42,11 +61,14 @@ remove :: proc(app: ^UI, id: Element_ID) {
 	}
 	deactivate_element(app, id)
 	remove_id(&app.events, id)
-	release_text(element)
+	release_element_text(element)
+	if element.behavior.destroy != nil {
+		element.behavior.destroy(element.behavior.state)
+	}
 	allocator := os.heap_allocator()
 	delete(element.label, allocator)
-	mem.free(element.press.data, allocator)
-	mem.free(element.update.data, allocator)
+	clear_element_callback(&element.press)
+	clear_element_callback(&element.update)
 	generation := element.generation + 1
 	element^ = Element{generation = generation}
 	append(&app.free_elements, slot(id))
@@ -93,7 +115,7 @@ set_text_style :: proc(app: ^UI, id: Element_ID, size: Text_Size = .Body,
 ) {
 	element := get_element(app, id)
 	if element.text_size != size || element.text_weight != weight {
-		release_text(element)
+		release_element_text(element)
 	}
 	element.text_size = size
 	element.text_color = color

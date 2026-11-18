@@ -1,3 +1,28 @@
+# Importing Fluid UI
+
+The repository root is the engine package. It owns element IDs, geometry,
+scenes, windows, input routing, and drawing primitives. The optional
+`elements/` package builds reusable controls on that API. The standalone
+showcase at `examples/showcase/` imports both packages and supplies its own
+layout and presentation.
+
+## Custom elements and styling
+
+Use `fluid.create_element` with an `Element_Definition` to construct an
+element directly. Set `pressable` for default click and keyboard activation,
+or supply an `Element_Behavior` to process routed input with your own state.
+The engine owns focus, pointer capture, and the lifetime of the element.
+It calls `release_graphics` before invalidating renderer or font resources
+and `destroy` when the element is removed.
+
+Use `fluid.set_draw` to replace drawing on an engine element or a stock
+control. The callback receives an `Element_View` with the current bounds,
+text style, and interaction state. The Controls showcase paints the Name
+field in application code and calls `elements.draw_field_text` to draw editing
+content with app-specified placeholder, selection, and caret colors. Custom choice drawing can read `elements.choice_slots` and
+`elements.choice_slot`, including drag previews. Custom confirmation drawing
+can read `elements.confirmation_progress` for the animated fill.
+
 # Units and geometry
 
 All public lengths are plain `f32` values in UI units. One UI unit equals
@@ -11,7 +36,7 @@ handled at the SDL boundary.
 
 ```odin
 viewport := fluid.bounds(ui, ui.window.viewport)
-sidebar := fluid.panel(scene, {
+sidebar := elements.panel(scene, {
     left = viewport.right - 18.75,
     top = 1.5,
     right = viewport.right - 2.25,
@@ -59,8 +84,8 @@ elements retain their own values.
 ## Pointer input
 
 Pointer hit testing checks active elements from front to back. An element
-with the default `.Auto` pointer behavior receives hits if it is a button,
-is draggable, or has an `on_press` handler. Use
+with the default `.Auto` pointer behavior receives hits when it is pressable,
+focusable, draggable, or has an input or press handler. Use
 `set_pointer_behavior(ui, id, .Pass)` to let hits through or `.Block` to
 stop hits at the element. For example, a scrim can block the controls behind
 it while a Back button above it still receives hits.
@@ -79,3 +104,51 @@ pins and animation origin to preserve desktop position.
 Use `window_position`, `pointer_position`, `set_window_position`, and
 `set_window_size` for UI units. Multiply UI units by `pixel_scale(window)`
 when drawing directly into an SDL renderer.
+
+## Direct controls
+
+These constructors and value setters are in the optional `elements` package.
+Choose a control according to the value or action it represents.
+
+| Constructor | Interaction |
+| --- | --- |
+| `button` | Click or press Enter or Space to invoke its `on_press` callback. Use `.Secondary` for a text-first action. |
+| `dangerous_button` | Hold for 750 ms or tap three times in quick succession. Progress clears after 500 ms of inactivity. A cancelled press earns no tap. |
+| `toggle` | Flip a Boolean. Apply an accepted change with `fluid.set_selected`. |
+| `options` | Pick from visible choices or use the arrow keys. Apply an accepted index with `set_choice`. |
+| `select` | Click a neighbor, use the arrow keys, or drag the current value to preview and release to commit. Selection stops at either end. |
+| `number_input` | Drag or use the arrow keys to adjust. Double-click or press Enter or Space to edit. Enter or loss of focus commits a valid number, and Escape cancels. `Number_Options` configures the bounds, step, and display affixes. |
+| `text_input`, `text_area` | Edit text directly. A text area also accepts newlines. Both support selection and standard clipboard shortcuts. |
+
+`on_change` proposes a value synchronously. The handler decides whether to
+apply it. The event carries a Boolean, choice index, number, or text string
+alongside the element ID. Text in the event is borrowed for the callback.
+`set_number` and `set_text_value` apply accepted values and keep their own
+storage. Number drafts and select drag previews belong to the control.
+
+Use `control_width` for content-based choice and number widths. Choice labels
+are copied at creation and keep their order. The application still supplies
+pins, visible field names, and any unit labels.
+
+Tab and Shift+Tab move focus through active buttons and explicitly focusable
+elements in draw order. Use `set_focusable` to include a label in that order
+and `has_focus` to compose contextual UI around it.
+
+In text fields, Ctrl or Option with Left/Right moves by word. Use the same
+modifier with Backspace/Delete to delete by word, or add Shift to a movement
+key to extend the selection. Ctrl+Up/Down moves between paragraphs. On macOS,
+Command+Left/Right moves to the edge of the current line,
+Command+Backspace/Delete deletes to that edge, and Command+Up/Down moves to
+the beginning or end of the field.
+
+Plain arrow movement and deletion respect grapheme boundaries, including
+combining accents and joined emoji. Double-click selects a word and
+triple-click selects a logical line. Drag after a multi-click to extend the
+selection by the same unit. Multiline fields support wheel scrolling,
+Page Up/Down, and vertical cursor movement that remembers its column.
+
+Ctrl or Command+Z undoes an edit. Add Shift or use Ctrl or Command+Y to redo.
+Adjacent keystrokes are grouped into a single edit. History records changes
+accepted through `on_change` and starts fresh when the caller replaces the
+field value independently. Input methods display composition inline and
+propose the value when the operating system commits the text.

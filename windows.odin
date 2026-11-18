@@ -11,6 +11,7 @@ Window :: struct {
 	ui:              ^UI,
 	using native:    Window_Resources,
 	viewport:        Element_ID,
+	background:      Color,
 	scenes:          [dynamic]^Scene,
 	close_requested: bool,
 	effect:          Window_Effect,
@@ -36,7 +37,10 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 	} else {
 		window = new(Window)
 	}
-	window^ = Window{ui = app}
+	window^ = Window{ui = app, background = {17, 23, 32, 255}}
+	if background, specified := config.background.?; specified {
+		window.background = background
+	}
 	if err := virtual.arena_init_growing(&window.storage); err != nil {
 		append(&app.free_windows, window)
 		return nil
@@ -107,6 +111,13 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 		release_window_resources(&replacement)
 		return false
 	}
+	app := window.ui
+	if id := app.focused; id != NO_ELEMENT && element_window(app, id) == window {
+		detach_input(app, id)
+	}
+	if id := app.captured; id != NO_ELEMENT && element_window(app, id) == window {
+		cancel_pointer(app, id)
+	}
 	release_window_text(window)
 	previous := window.native
 	window.native = replacement
@@ -123,7 +134,6 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	if .HIDDEN not_in sdl3.GetWindowFlags(window.handle) {
 		present_window(window)
 	}
-	app := window.ui
 	if app.drag.element != NO_ELEMENT && element_window(app, app.drag.element) == window {
 		end_drag(app)
 	}

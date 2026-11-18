@@ -6,7 +6,6 @@ import "core:slice"
 
 // Bindings are owned by their element. Callback owners must stay at a stable
 // address while bound. Public registration keeps the owner type.
-@(private="package")
 Element_Callback :: struct($Argument: typeid) {
 	data: rawptr,
 	call: proc(data: rawptr, ui: ^UI, argument: Argument),
@@ -18,18 +17,23 @@ Element_Binding :: struct($Owner, $Argument: typeid) {
 	run:   proc(owner: ^Owner, ui: ^UI, argument: Argument),
 }
 
-@(private="package")
 bind_element :: proc(callback: ^Element_Callback($Argument), owner: ^$Owner,
 	run: proc(owner: ^Owner, ui: ^UI, argument: Argument),
 ) {
 	assert(owner != nil && run != nil)
 	binding := new(Element_Binding(Owner, Argument), os.heap_allocator())
 	binding^ = {owner, run}
-	mem.free(callback.data, os.heap_allocator())
+	clear_element_callback(callback)
 	callback^ = {binding, proc(data: rawptr, ui: ^UI, argument: Argument) {
 		binding := cast(^Element_Binding(Owner, Argument))data
 		binding.run(binding.owner, ui, argument)
 	}}
+}
+
+// Release a binding created by bind_element and reset the callback.
+clear_element_callback :: proc(callback: ^Element_Callback($Argument)) {
+	mem.free(callback.data, os.heap_allocator())
+	callback^ = {}
 }
 
 on_press :: proc(ui: ^UI, id: Element_ID, owner: ^$Owner, run: proc(owner: ^Owner, ui: ^UI, id: Element_ID)) {

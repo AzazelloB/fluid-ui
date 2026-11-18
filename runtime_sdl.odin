@@ -16,6 +16,7 @@ UI :: struct {
 	free_elements:                     [dynamic]int,
 	hovered:                           Element_ID,
 	pressed:                           Element_ID,
+	focused, captured:                 Element_ID,
 	drag:                              Drag,
 	cursors:                           SDL_Cursors,
 	elements:                          [dynamic]Element, // Stable registry indices; never reordered.
@@ -32,6 +33,7 @@ Config :: struct {
 	size:         [2]f32,
 	minimum_size: [2]f32,
 	flags:        sdl3.WindowFlags,
+	background:   Maybe(Color),
 }
 
 init :: proc(app: ^UI, config: Config) -> bool {
@@ -39,6 +41,8 @@ init :: proc(app: ^UI, config: Config) -> bool {
 		running = true,
 		hovered = NO_ELEMENT,
 		pressed = NO_ELEMENT,
+		focused = NO_ELEMENT,
+		captured = NO_ELEMENT,
 		drag = {element = NO_ELEMENT, started = NO_ELEMENT, released = NO_ELEMENT},
 	}
 	success := false

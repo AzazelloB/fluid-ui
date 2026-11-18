@@ -1,6 +1,7 @@
 package main
 
 import fluid "../.."
+import "../../elements"
 
 Rectangles :: struct {
 	navigation, stage, anchor, toggle, upper, lower, bar: fluid.Element_ID,
@@ -13,13 +14,13 @@ create_rectangles :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Show
 	scene := fluid.create_scene(ui.window)
 	append(&entry.scenes, scene)
 	page.stage = demo_surface(scene, {}, radius = 1.25)
-	page.toggle = fluid.button(scene, {}, "Move")
-	fluid.on_press(ui, page.toggle, page, shift_anchor)
-	page.anchor = fluid.panel(scene, {}, {41, 83, 75, 255})
+	page.toggle = elements.toggle(scene, {}, "Move", false)
+	elements.on_change(ui, page.toggle, page, shift_anchor)
+	page.anchor = elements.panel(scene, {}, {41, 83, 75, 255})
 	fluid.set_style(ui, page.anchor, {radius = 0.875, border = {106, 179, 156, 255}, border_width = 0.0625, shadow = 0.75})
 	page.upper = demo_surface(scene, {}, {29, 47, 53, 255}, radius = 0.625)
 	page.lower = demo_surface(scene, {}, {42, 41, 53, 255}, radius = 0.625)
-	page.bar = fluid.panel(scene, {}, MINT)
+	page.bar = elements.panel(scene, {}, MINT)
 	fluid.set_style(ui, page.bar, {radius = 0.3125})
 	update_rectangles(page, ui, 0)
 	fluid.on_update(ui, page.stage, page, update_rectangles)
@@ -52,9 +53,10 @@ update_rectangles :: proc(page: ^Rectangles, ui: ^fluid.UI, dt: f64) {
 	})
 }
 
-shift_anchor :: proc(page: ^Rectangles, ui: ^fluid.UI, id: fluid.Element_ID) {
-	page.shifted = !page.shifted
+shift_anchor :: proc(page: ^Rectangles, ui: ^fluid.UI, change: elements.Control_Change) {
+	page.shifted = change.value.(bool)
+	fluid.set_selected(ui, change.id, page.shifted)
 	stage := fluid.bounds(ui, page.stage)
 	fluid.animate_to(ui, page.anchor, anchor_pins(stage, page.shifted), damped_animation(0.65))
-	fluid.set_label(ui, id, page.shifted ? "Reset" : "Move")
+	fluid.set_label(ui, change.id, page.shifted ? "Reset" : "Move")
 }
