@@ -37,6 +37,8 @@ Platform_Event :: struct {
 	clicks: u8,
 	modifiers: Key_Modifiers, // Mouse-down modifiers at event time.
 	wheel: f32,
+	wheel_direct: bool,
+	wheel_distance: Maybe(f32),
 	key: Keyboard_Event,
 	edit: Text_Editing_Event,
 	text: Text_Input_Event,

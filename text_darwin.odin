@@ -84,16 +84,20 @@ create_macos_text_font :: proc(pixels: f32, bold: bool) -> rawptr {
 }
 
 @(private="package")
-platform_text_font_metrics :: proc(pixels: f32, bold: bool) -> (height, line_height: i32) {
+platform_text_font_metrics :: proc(pixels: f32, bold: bool) -> (height, line_height: i32, advance: f64) {
 	font := create_macos_text_font(pixels, bold)
 	if font == nil {
-		line_height = max(1, i32(math.ceil(pixels * 1.2)))
-		return line_height, line_height
+		advance = max(1, f64(pixels * 1.2))
+		line_height = i32(math.ceil(advance))
+		return line_height, line_height, advance
 	}
 	defer CFRelease(font)
-	height = max(1, i32(math.ceil(CTFontGetAscent(font) + CTFontGetDescent(font))))
-	line_height = max(height, height + i32(math.ceil(CTFontGetLeading(font))))
-	return height, line_height
+	base_height := CTFontGetAscent(font) + CTFontGetDescent(font)
+	leading := max(0, CTFontGetLeading(font))
+	height = max(1, i32(math.ceil(base_height)))
+	line_height = height + i32(math.ceil(leading))
+	advance = max(1, base_height + leading)
+	return height, line_height, advance
 }
 
 @(private="package")

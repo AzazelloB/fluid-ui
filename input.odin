@@ -112,7 +112,9 @@ requests :: proc(app: ^UI) {
 		case .Wheel:
 			point := event.position / window_scale(window)
 			if id := hit_test(app, window, point); id != NO_ELEMENT {
-				send_element_event(app, id, Wheel_Event(event.wheel))
+				if !event.wheel_direct || !send_element_event(app, id, Precise_Scroll_Event{event.wheel, event.wheel_distance}) {
+					send_element_event(app, id, Wheel_Event(event.wheel))
+				}
 			}
 		case .Mouse_Move:
 			deliver_pointer(app, window, event.position / window_scale(window), event.timestamp, false)

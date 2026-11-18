@@ -31,6 +31,7 @@ Font_Metric :: struct {
 	pixels: f32,
 	bold: bool,
 	height, line_height: i32,
+	advance: f64,
 }
 
 @(private="file", thread_local)
@@ -39,15 +40,27 @@ font_metrics: [16]Font_Metric
 next_font_metric: int
 
 text_font_metrics :: proc(pixels: f32, bold: bool) -> (height, line_height: i32) {
+	metric := text_font_metric(pixels, bold)
+	return metric.height, metric.line_height
+}
+
+// Baseline spacing in physical pixels, before rounding to a pixel boundary.
+text_line_advance :: proc(font: Text_Style) -> f64 {
+	return text_font_metric(font.pixels, font.bold).advance
+}
+
+@(private="file")
+text_font_metric :: proc(pixels: f32, bold: bool) -> Font_Metric {
 	for metric in font_metrics {
 		if metric.height > 0 && metric.pixels == pixels && metric.bold == bold {
-			return metric.height, metric.line_height
+			return metric
 		}
 	}
-	height, line_height = platform_text_font_metrics(pixels, bold)
-	font_metrics[next_font_metric] = {pixels, bold, height, line_height}
+	height, line_height, advance := platform_text_font_metrics(pixels, bold)
+	metric := Font_Metric{pixels, bold, height, line_height, advance}
+	font_metrics[next_font_metric] = metric
 	next_font_metric = (next_font_metric + 1) % len(font_metrics)
-	return
+	return metric
 }
 
 @(private="package")

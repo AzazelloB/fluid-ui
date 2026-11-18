@@ -41,7 +41,7 @@ set_draw :: proc(ui: ^UI, id: Element_ID, draw: Element_Draw) {
 
 Element_Event :: union {
 	Pointer_Event, Keyboard_Event, Text_Input_Event, Text_Editing_Event,
-	Focus_Event, Wheel_Event, Focused_Frame,
+	Focus_Event, Wheel_Event, Precise_Scroll_Event, Focused_Frame,
 }
 Pointer_Event :: struct {
 	kind: enum {Down, Move, Up, Cancel},
@@ -56,6 +56,10 @@ Focus_Event :: struct {
 	commit: bool, // Ordinary blur can commit. Deactivation and transfer cancel.
 }
 Wheel_Event :: distinct f32 // Signed vertical wheel steps.
+Precise_Scroll_Event :: struct {
+	steps: f32,
+	distance: Maybe(f32), // Signed vertical distance in UI units when supplied by the platform.
+}
 Focused_Frame :: distinct u64 // Monotonic clock in nanoseconds.
 
 // State stays at a stable address for the element's lifetime. Return true to

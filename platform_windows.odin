@@ -84,7 +84,13 @@ foreign region_gdi {
 foreign window_user {
 	WindowFromPoint :: proc(point: win.POINT) -> win.HWND ---
 	GetDoubleClickTime :: proc() -> win.UINT ---
+	GetCurrentInputMessageSource :: proc(source: ^Win_Input_Message_Source) -> win.BOOL ---
 }
+
+@(private="file")
+Win_Input_Message_Source :: struct {device, origin: u32}
+@(private="file")
+WIN_INPUT_TOUCHPAD :: 0x10
 
 @(default_calling_convention="system", private="file")
 foreign clipboard_kernel {
@@ -119,6 +125,7 @@ platform_init :: proc() -> bool {
 
 @(private="package")
 platform_shutdown :: proc() {
+	release_win_text_rasterizer()
 	if win_frame_timer != nil {
 		win.CloseHandle(win_frame_timer)
 		win_frame_timer = nil
@@ -664,7 +671,9 @@ win_window_proc :: proc "system" (
 		point := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
 		win.ScreenToClient(handle, &point)
 		event.position = {f32(point.x), f32(point.y)}
-		event.wheel = f32(i16(u16(wparam >> 16))) / 120
+		event.wheel = f32(win.GET_WHEEL_DELTA_WPARAM(wparam)) / win.WHEEL_DELTA
+		source: Win_Input_Message_Source
+		event.wheel_direct = bool(GetCurrentInputMessageSource(&source)) && source.device == WIN_INPUT_TOUCHPAD
 	case win.WM_SETCURSOR:
 		if u16(lparam & 0xffff) == win.HTCLIENT {
 			win.SetCursor(win_cursors[win_cursor])

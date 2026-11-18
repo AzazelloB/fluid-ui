@@ -28,6 +28,8 @@ control_input :: proc(data: rawptr, ui: ^fluid.UI, id: fluid.Element_ID, event: 
 		}
 	case fluid.Wheel_Event:
 		scroll_text_area(get_element(ui, id), f32(value))
+	case fluid.Precise_Scroll_Event:
+		return false
 	case fluid.Focused_Frame:
 		if guard, ok := &control.state.(Guard_Control); ok && guard.holding && guard.progress < 1 {
 			now := u64(value)

@@ -418,6 +418,8 @@ mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) {
 			event.kind = .Wheel
 			event.wheel = f32(mac_send(f64, mac_receiver(native_event), "scrollingDeltaY"))
 			if mac_send(bool, mac_receiver(native_event), "hasPreciseScrollingDeltas") {
+				event.wheel_direct = true
+				event.wheel_distance = event.wheel / window_scale(window)
 				event.wheel /= 10 // Convert trackpad points to wheel steps.
 			}
 		}

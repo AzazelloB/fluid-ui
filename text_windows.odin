@@ -133,11 +133,68 @@ D2D_Target_Methods :: struct {
 }
 
 @(private="file")
+Win_Text_Rasterizer :: struct {
+	factory: ^D2D_Factory,
+	target: ^D2D_Target,
+	brush: rawptr,
+	dc: win.HDC,
+}
+
+@(private="file", thread_local)
+win_text_rasterizer: Win_Text_Rasterizer
+
+@(private="file")
 release_text_com :: proc(pointer: rawptr) {
 	if pointer != nil {
 		object := cast(^Com_Unknown)pointer
 		object.vtable.release(object)
 	}
+}
+
+@(private="package")
+release_win_text_rasterizer :: proc() {
+	rasterizer := &win_text_rasterizer
+	release_text_com(rasterizer.brush)
+	release_text_com(rasterizer.target)
+	release_text_com(rasterizer.factory)
+	if rasterizer.dc != nil {
+		win.DeleteDC(rasterizer.dc)
+	}
+	rasterizer^ = {}
+}
+
+@(private="file")
+prepare_win_text_rasterizer :: proc() -> bool {
+	// Each mask uses the same target and brush with a freshly bound bitmap.
+	rasterizer := &win_text_rasterizer
+	if rasterizer.brush != nil {
+		return true
+	}
+	ready := false
+	defer {
+		if !ready {
+			release_win_text_rasterizer()
+		}
+	}
+	rasterizer.dc = win.CreateCompatibleDC(nil)
+	if rasterizer.dc == nil {
+		return false
+	}
+	iid := MASK_FACTORY_ID
+	if D2D1CreateFactory(0, &iid, nil, &rasterizer.factory) < 0 {
+		return false
+	}
+	// Software B8G8R8A8 at 96 DPI with the alpha channel ignored. A white
+	// glyph over black yields a single-channel coverage mask in every RGB channel.
+	properties := D2D_Target_Properties{kind = 1, format = 87, alpha_mode = 3, dpi_x = 96, dpi_y = 96}
+	factory := rasterizer.factory
+	if factory.vtable.create_dc_target(factory, &properties, &rasterizer.target) < 0 {
+		return false
+	}
+	white := [4]f32{1, 1, 1, 1}
+	target := rasterizer.target
+	ready = target.vtable.create_solid_brush(target, &white, nil, &rasterizer.brush) >= 0
+	return ready
 }
 
 @(private="file")
@@ -167,7 +224,7 @@ create_dwrite_layout :: proc(text: [^]u16, length: u32, pixels: f32, bold: bool,
 }
 
 @(private="package")
-platform_text_font_metrics :: proc(pixels: f32, bold: bool) -> (height, line_height: i32) {
+platform_text_font_metrics :: proc(pixels: f32, bold: bool) -> (height, line_height: i32, advance: f64) {
 	sample := [1]u16{'M'}
 	layout := create_dwrite_layout(raw_data(sample[:]), 1, pixels, bold, 0)
 	if layout != nil {
@@ -175,12 +232,14 @@ platform_text_font_metrics :: proc(pixels: f32, bold: bool) -> (height, line_hei
 		metrics: DWrite_Line_Metrics
 		count: u32
 		if layout.vtable.get_lines(layout, &metrics, 1, &count) >= 0 && count > 0 {
-			line_height = max(1, i32(math.ceil(metrics.height)))
-			return line_height, line_height
+			advance = max(1, f64(metrics.height))
+			line_height = i32(math.ceil(advance))
+			return line_height, line_height, advance
 		}
 	}
-	line_height = max(1, i32(math.ceil(pixels * 1.2)))
-	return line_height, line_height
+	advance = max(1, f64(pixels * 1.2))
+	line_height = i32(math.ceil(advance))
+	return line_height, line_height, advance
 }
 
 @(private="package")
@@ -347,12 +406,17 @@ text_ink_bounds :: proc(text: ^Text) -> IRect {
 
 @(private="package")
 rasterize_text :: proc(text: ^Text, ink: IRect) -> []u8 {
-	layout := text.layout.object
-	dc := win.CreateCompatibleDC(nil)
-	if dc == nil {
+	if !prepare_win_text_rasterizer() {
 		return nil
 	}
-	defer win.DeleteDC(dc)
+	rasterizer := &win_text_rasterizer
+	dc, target := rasterizer.dc, rasterizer.target
+	target_failed := false
+	defer {
+		if target_failed {
+			release_win_text_rasterizer()
+		}
+	}
 	info := win.BITMAPINFO{bmiHeader = {
 		biSize = size_of(win.BITMAPINFOHEADER), biWidth = ink.w, biHeight = -ink.h, biPlanes = 1, biBitCount = 32,
 	}}
@@ -363,38 +427,23 @@ rasterize_text :: proc(text: ^Text, ink: IRect) -> []u8 {
 	}
 	defer win.DeleteObject(win.HGDIOBJ(bitmap))
 	previous := win.SelectObject(dc, win.HGDIOBJ(bitmap))
+	if previous == nil {
+		return nil
+	}
 	defer win.SelectObject(dc, previous)
 
-	factory: ^D2D_Factory
-	iid := MASK_FACTORY_ID
-	if D2D1CreateFactory(0, &iid, nil, &factory) < 0 {
-		return nil
-	}
-	defer release_text_com(factory)
-	// Software B8G8R8A8 at 96 DPI with the alpha channel ignored. A white
-	// glyph over black yields a single-channel coverage mask in every RGB channel.
-	properties := D2D_Target_Properties{kind = 1, format = 87, alpha_mode = 3, dpi_x = 96, dpi_y = 96}
-	target: ^D2D_Target
-	if factory.vtable.create_dc_target(factory, &properties, &target) < 0 {
-		return nil
-	}
-	defer release_text_com(target)
 	rect := win.RECT{0, 0, ink.w, ink.h}
 	if target.vtable.bind_dc(target, dc, &rect) < 0 {
+		target_failed = true
 		return nil
 	}
-	white := [4]f32{1, 1, 1, 1}
-	brush: rawptr
-	if target.vtable.create_solid_brush(target, &white, nil, &brush) < 0 {
-		return nil
-	}
-	defer release_text_com(brush)
 	black := [4]f32{0, 0, 0, 1}
 	target.vtable.begin_draw(target)
 	target.vtable.set_text_antialias(target, 2) // D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE
 	target.vtable.clear(target, &black)
-	target.vtable.draw_text_layout(target, {-f32(ink.x), -f32(ink.y)}, layout, brush, 0)
+	target.vtable.draw_text_layout(target, {-f32(ink.x), -f32(ink.y)}, text.layout.object, rasterizer.brush, 0)
 	if target.vtable.end_draw(target, nil, nil) < 0 {
+		target_failed = true
 		return nil
 	}
 
