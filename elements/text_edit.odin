@@ -8,7 +8,6 @@ import "core:strconv"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
-import "vendor:sdl3"
 
 @(private="package")
 Editor :: struct {
@@ -50,7 +49,7 @@ begin_number_edit :: proc(ui: ^fluid.UI, id: fluid.Element_ID, number: ^Number_C
 	number.editor = {caret = len(draft)}
 	fluid.set_label(ui, id, draft)
 	fluid.set_cursor(ui, id, .Text)
-	_ = sdl3.StartTextInput(fluid.element_window(ui, id).handle)
+	fluid.set_text_input(fluid.element_window(ui, id), true)
 }
 
 @(private="package")
@@ -165,14 +164,14 @@ skip_text_run :: proc(value: string, offset: int, backwards: bool, space_only: b
 }
 
 @(private="file")
-horizontal_boundary :: proc(element: Control_View, editor: ^Editor, backwards: bool, modifiers: sdl3.Keymod) -> int {
+horizontal_boundary :: proc(element: Control_View, editor: ^Editor, backwards: bool, modifiers: fluid.Key_Modifiers) -> int {
 	value := element.label
 	offset := editor.caret
-	if modifiers & sdl3.KMOD_GUI != {} {
-		line_edge := move_caret_line(element, editor, backwards ? sdl3.K_HOME : sdl3.K_END, false)
+	if modifiers & {.Gui} != {} {
+		line_edge := move_caret_line(element, editor, backwards ? fluid.Key.Home : fluid.Key.End, false)
 		return text_boundary(value, line_edge)
 	}
-	by_word := modifiers & (sdl3.KMOD_CTRL | sdl3.KMOD_ALT) != {}
+	by_word := modifiers & {.Ctrl, .Alt} != {}
 	if !by_word {
 		return backwards ? text_boundary(value, offset - 1) : next_boundary(value, offset)
 	}
@@ -181,7 +180,7 @@ horizontal_boundary :: proc(element: Control_View, editor: ^Editor, backwards: b
 		return text_boundary(value, start)
 	}
 	target: int
-	if modifiers & sdl3.KMOD_CTRL != {} {
+	if modifiers & {.Ctrl} != {} {
 		// Control moves forward to the beginning of the next run.
 		target = skip_text_run(value, skip_text_run(value, offset, false), false, true)
 	} else {
@@ -280,63 +279,60 @@ apply_editor_snapshot :: proc(ui: ^fluid.UI, id: fluid.Element_ID, snapshot: Edi
 }
 
 @(private="package")
-edit_key :: proc(ui: ^fluid.UI, id: fluid.Element_ID, event: sdl3.KeyboardEvent) {
+edit_key :: proc(ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Keyboard_Event) {
 	element := get_element(ui, id)
 	editor := editor_for(element.control)
 	if editor.preedit != "" {
-		if event.key == sdl3.K_ESCAPE {
-			_ = sdl3.ClearComposition(element.window.handle)
+		if event.key == fluid.Key.Escape {
+			fluid.clear_composition(element.window)
 			clear_preedit(editor)
 		}
 		return
 	}
 	value := element.label
 	low, high := min(editor.anchor, editor.caret), max(editor.anchor, editor.caret)
-	extend := event.mod & sdl3.KMOD_SHIFT != {}
-	shortcut := event.mod & (sdl3.KMOD_CTRL | sdl3.KMOD_GUI) != {}
+	extend := event.modifiers & {.Shift} != {}
+	shortcut := event.modifiers & {.Ctrl, .Gui} != {}
 	if shortcut {
-		switch event.key {
-		case sdl3.K_Z:
+		#partial switch event.key {
+		case fluid.Key.Z:
 			restore_editor_edit(ui, id, extend)
 			return
-		case sdl3.K_Y:
+		case fluid.Key.Y:
 			restore_editor_edit(ui, id, true)
 			return
-		case sdl3.K_A:
+		case fluid.Key.A:
 			editor.history.last_group = .Separate
 			editor.column = nil
 			editor.manual_scroll = false
 			editor.anchor = 0
 			editor.caret = len(value)
 			return
-		case sdl3.K_C, sdl3.K_X:
+		case fluid.Key.C, fluid.Key.X:
 			if low != high {
-				copied := strings.clone_to_cstring(value[low:high], context.temp_allocator)
-				if sdl3.SetClipboardText(copied) && event.key == sdl3.K_X {
+				if fluid.set_clipboard_text(element.window, value[low:high]) && event.key == fluid.Key.X {
 					replace_text(ui, id, low, high, "")
 				}
 			}
 			return
-		case sdl3.K_V:
-			data := sdl3.GetClipboardText()
-			if data != nil {
-				defer sdl3.free(data)
-				insert_text(ui, id, string(cstring(data)))
+		case fluid.Key.V:
+			if data := fluid.get_clipboard_text(element.window); data != "" {
+				insert_text(ui, id, data)
 			}
 			return
 		case:
 		}
 	}
 	next := editor.caret
-	vertical := event.key == sdl3.K_UP || event.key == sdl3.K_DOWN ||
-		event.key == sdl3.K_PAGEUP || event.key == sdl3.K_PAGEDOWN
+	vertical := event.key == fluid.Key.Up || event.key == fluid.Key.Down ||
+		event.key == fluid.Key.Page_Up || event.key == fluid.Key.Page_Down
 	if !vertical || shortcut {
 		editor.column = nil
 	}
-	switch event.key {
-	case sdl3.K_RETURN, sdl3.K_KP_ENTER:
+	#partial switch event.key {
+	case fluid.Key.Enter, fluid.Key.Keypad_Enter:
 		if is_number_edit(element.control) {
-			_ = sdl3.StopTextInput(element.window.handle)
+			fluid.set_text_input(element.window, false)
 			finish_number_edit(ui, id, true)
 		} else if element.control.state.(Text_Control).multiline {
 			insert_text(ui, id, "\n")
@@ -344,41 +340,41 @@ edit_key :: proc(ui: ^fluid.UI, id: fluid.Element_ID, event: sdl3.KeyboardEvent)
 			fluid.blur(ui)
 		}
 		return
-	case sdl3.K_ESCAPE:
-		_ = sdl3.StopTextInput(element.window.handle)
+	case fluid.Key.Escape:
+		fluid.set_text_input(element.window, false)
 		finish_number_edit(ui, id, false)
 		return
-	case sdl3.K_BACKSPACE, sdl3.K_DELETE:
+	case fluid.Key.Backspace, fluid.Key.Delete:
 		group := Edit_Group.Separate
 		if low == high {
-			if event.mod & (sdl3.KMOD_CTRL | sdl3.KMOD_ALT | sdl3.KMOD_GUI) == {} {
-				group = event.key == sdl3.K_BACKSPACE ? .Backspace : .Delete
+			if event.modifiers & {.Ctrl, .Alt, .Gui} == {} {
+				group = event.key == fluid.Key.Backspace ? .Backspace : .Delete
 			}
-			backwards := event.key == sdl3.K_BACKSPACE
-			target := horizontal_boundary(element, editor, backwards, event.mod)
+			backwards := event.key == fluid.Key.Backspace
+			target := horizontal_boundary(element, editor, backwards, event.modifiers)
 			low, high = min(next, target), max(next, target)
 		}
 		if low != high {
 			replace_text(ui, id, low, high, "", group)
 		}
 		return
-	case sdl3.K_LEFT, sdl3.K_RIGHT:
-		backwards := event.key == sdl3.K_LEFT
-		word_or_line := event.mod & (sdl3.KMOD_CTRL | sdl3.KMOD_ALT | sdl3.KMOD_GUI) != {}
+	case fluid.Key.Left, fluid.Key.Right:
+		backwards := event.key == fluid.Key.Left
+		word_or_line := event.modifiers & {.Ctrl, .Alt, .Gui} != {}
 		if !word_or_line && !extend && low != high {
 			next = backwards ? low : high
 		} else {
-			next = horizontal_boundary(element, editor, backwards, event.mod)
+			next = horizontal_boundary(element, editor, backwards, event.modifiers)
 		}
-	case sdl3.K_HOME, sdl3.K_END:
+	case fluid.Key.Home, fluid.Key.End:
 		next = move_caret_line(element, editor, event.key, shortcut)
-	case sdl3.K_PAGEUP, sdl3.K_PAGEDOWN:
+	case fluid.Key.Page_Up, fluid.Key.Page_Down:
 		next = move_caret_line(element, editor, event.key, false)
-	case sdl3.K_UP, sdl3.K_DOWN:
-		backwards := event.key == sdl3.K_UP
-		if event.mod & sdl3.KMOD_GUI != {} {
+	case fluid.Key.Up, fluid.Key.Down:
+		backwards := event.key == fluid.Key.Up
+		if event.modifiers & {.Gui} != {} {
 			next = backwards ? 0 : len(value)
-		} else if event.mod & sdl3.KMOD_CTRL != {} {
+		} else if event.modifiers & {.Ctrl} != {} {
 			next = paragraph_boundary(value, next, backwards)
 		} else {
 			next = move_caret_line(element, editor, event.key, false)
@@ -395,9 +391,9 @@ edit_key :: proc(ui: ^fluid.UI, id: fluid.Element_ID, event: sdl3.KeyboardEvent)
 }
 
 @(private="package")
-update_preedit :: proc(editor: ^Editor, event: sdl3.TextEditingEvent) {
+update_preedit :: proc(editor: ^Editor, event: fluid.Text_Editing_Event) {
 	clear_preedit(editor)
-	value := string(event.text)
+	value := event.text
 	if value == "" {
 		return
 	}

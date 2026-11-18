@@ -3,33 +3,36 @@ package fluid
 import "core:fmt"
 import "core:math"
 import virtual "core:mem/virtual"
-import "vendor:sdl3"
-import ttf "vendor:sdl3/ttf"
+
+Window_Flag :: enum {Hidden, Borderless, Transparent}
+Window_Flags :: bit_set[Window_Flag]
+
+Config :: struct {
+	title:        cstring,
+	size:         [2]f32,
+	minimum_size: [2]f32,
+	flags:        Window_Flags,
+	background:   Maybe(Color),
+}
 
 // Window and Scene pointers expire on close. Transfer elements before closing
 // their window to preserve their IDs; remaining IDs are invalidated on close.
 Window :: struct {
-	ui:              ^UI,
-	using native:    Window_Resources,
-	viewport:        Element_ID,
-	background:      Color,
-	scenes:          [dynamic]^Scene,
-	close_requested: bool,
-	effect:          Window_Effect,
-	requested_flags: Maybe(sdl3.WindowFlags),
-	storage:         virtual.Arena,
-}
-
-// These resources can be replaced while the logical window stays in place.
-@(private="package")
-Window_Resources :: struct {
-	handle:           ^sdl3.Window,
-	renderer:         ^sdl3.Renderer,
-	fonts:            [Text_Weight][Text_Size]^ttf.Font,
-	text_engine:      ^ttf.TextEngine,
+	ui:               ^UI,
+	viewport:         Element_ID,
+	background:       Color,
+	scenes:           [dynamic]^Scene,
+	close_requested:  bool,
+	effect:           Window_Effect,
+	clip:             Maybe(Window_Circle),
+	drawable_size:    [2]i32,
+	renderer:         ^Renderer,
+	platform:         Platform_Window,
+	open:             bool,
 	display_scale:    f32,
 	coordinate_scale: f32,
 	minimum_size:     [2]f32,
+	storage:          virtual.Arena,
 }
 
 create_window :: proc(app: ^UI, config: Config) -> ^Window {
@@ -40,7 +43,7 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 	} else {
 		window = new(Window)
 	}
-	window^ = Window{ui = app, background = {17, 23, 32, 255}}
+	window^ = Window{ui = app, background = {17, 23, 32, 255}, minimum_size = config.minimum_size}
 	if background, specified := config.background.?; specified {
 		window.background = background
 	}
@@ -48,125 +51,51 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 		append(&app.free_windows, window)
 		return nil
 	}
-	window.scenes = make([dynamic]^Scene, virtual.arena_allocator(&window.storage))
-	if !create_window_resources(&window.native, config) {
-		virtual.arena_destroy(&window.storage)
-		append(&app.free_windows, window)
-		return nil
-	}
-	window.viewport = register_element(app, Element{space = window})
-	sync_window_scale(window)
-	sync_viewport(window)
-	append(&app.windows, window)
-	return window
-}
-
-@(private="package")
-create_window_resources :: proc(window: ^Window_Resources, config: Config, placement: Maybe(sdl3.Rect) = nil) -> bool {
+	allocator := virtual.arena_allocator(&window.storage)
+	window.scenes = make([dynamic]^Scene, allocator)
 	success := false
 	defer {
 		if !success {
-			fmt.eprintln("Cannot create window:", sdl3.GetError())
-			release_window_resources(window)
+			virtual.arena_destroy(&window.storage)
+			append(&app.free_windows, window)
 		}
 	}
-	initial_size := native_window_size(config.size, 1)
-	if rect, placed := placement.?; placed {
-		initial_size = {rect.w, rect.h}
+	if !platform_create_window(window, config) {
+		fmt.eprintln("Cannot create native window")
+		return nil
 	}
-	window.handle = sdl3.CreateWindow(config.title, initial_size[0], initial_size[1], config.flags | {.RESIZABLE, .HIGH_PIXEL_DENSITY, .HIDDEN})
-	if window.handle == nil {
-		return false
-	}
-	if rect, placed := placement.?; placed && !sdl3.SetWindowPosition(window.handle, rect.x, rect.y) {
-		return false
-	}
-	window.display_scale, window.coordinate_scale = window_scales(window.handle)
-	window.minimum_size = config.minimum_size
-	if !apply_window_minimum_size(window) {
-		return false
-	}
-	if placement == nil {
-		size := native_window_size(config.size, window.coordinate_scale)
-		if size != initial_size {
-			display := sdl3.GetDisplayForWindow(window.handle)
-			center := sdl3.WINDOWPOS_CENTERED_DISPLAY(i32(display))
-			if !sdl3.SetWindowSize(window.handle, size[0], size[1]) ||
-				!sdl3.SetWindowPosition(window.handle, center, center) {
-				return false
-			}
+	defer {
+		if !success {
+			platform_destroy_window(window)
 		}
 	}
-	window.renderer = sdl3.CreateRenderer(window.handle, nil)
-	if window.renderer == nil {
-		return false
+	surface, result := platform_create_surface(window, app.vulkan.instance)
+	if result != .SUCCESS {
+		fmt.eprintln("Cannot create Vulkan window surface:", result)
+		return nil
 	}
-	// Each renderer presents to its own drawable and must synchronize it.
-	if !sdl3.SetRenderVSync(window.renderer, 1) {
-		return false
+	window.renderer = new(Renderer, allocator)
+	transparent := platform_clips_drawable && .Transparent in config.flags
+	if !renderer_init(window.renderer, &app.vulkan, surface, transparent) {
+		return nil
 	}
-	if !create_text_resources(window) || (.HIDDEN not_in config.flags && !sdl3.ShowWindow(window.handle)) {
-		return false
-	}
+	window.open = true
+	window.viewport = register_element(app, Element{space = window})
+	append(&app.windows, window)
 	success = true
-	return true
-}
-
-// Change creation-only SDL flags without changing the Fluid window, scenes,
-// or viewport ID. Call between frames; renderer-specific text is rebuilt.
-@(private="package")
-replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
-	config := Config{
-		title = sdl3.GetWindowTitle(window.handle),
-		flags = flags | {.HIDDEN},
-		minimum_size = window.minimum_size,
-	}
-	placement: sdl3.Rect
-	if !sdl3.GetWindowSize(window.handle, &placement.w, &placement.h) ||
-		!sdl3.GetWindowPosition(window.handle, &placement.x, &placement.y) {
-		return false
-	}
-
-	replacement: Window_Resources
-	if !create_window_resources(&replacement, config, placement) {
-		return false
-	}
-	app := window.ui
-	if id := app.focused; id != NO_ELEMENT && element_window(app, id) == window {
-		detach_input(app, id)
-	}
-	if id := app.captured; id != NO_ELEMENT && element_window(app, id) == window {
-		cancel_pointer(app, id)
-	}
-	release_window_text(window)
-	previous := window.native
-	window.native = replacement
-	sync_window_scale(window)
-	sync_viewport(window)
-	if .HIDDEN in sdl3.GetWindowFlags(previous.handle) {
-		present_window(window)
+	if .Hidden in config.flags {
+		sync_window_geometry(window)
 	} else if !show_window(window) {
-		release_window_text(window)
-		release_window_resources(&window.native)
-		window.native = previous
-		sync_viewport(window)
-		return false
+		close_window(window)
+		return nil
 	}
-	// Present again after showing: some backends skip hidden-window presentation.
-	if .HIDDEN not_in sdl3.GetWindowFlags(window.handle) {
-		present_window(window)
-	}
-	if app.drag.element != NO_ELEMENT && element_window(app, app.drag.element) == window {
-		end_drag(app)
-	}
-	release_window_resources(&previous)
-	return true
+	return window
 }
 
-// Scenes are deactivated and native text is released before its renderer.
+// Scenes are deactivated and graphics resources released before the window closes.
 // Transfer any elements you want to keep using before closing their window.
 close_window :: proc(window: ^Window) {
-	if window.handle == nil {
+	if !window.open {
 		return
 	}
 	app := window.ui
@@ -176,10 +105,12 @@ close_window :: proc(window: ^Window) {
 		}
 	}
 	cancel_window_effect(window)
-	window.requested_flags = nil
 	remove(app, window.viewport)
+	window.open = false
+	renderer_destroy(window.renderer)
+	platform_destroy_window(window)
 	virtual.arena_destroy(&window.storage)
-	release_window_resources(&window.native)
+	window.renderer = nil
 	for value, i in app.windows {
 		if value == window {
 			ordered_remove(&app.windows, i)
@@ -193,53 +124,24 @@ close_window :: proc(window: ^Window) {
 }
 
 window_position :: proc(window: ^Window) -> [2]f32 {
-	x, y: i32
-	assert(sdl3.GetWindowPosition(window.handle, &x, &y))
-	return {f32(x) / UI_UNIT_POINTS, f32(y) / UI_UNIT_POINTS}
+	return platform_window_position(window) / UI_UNIT_POINTS
 }
 
 pointer_position :: proc(window: ^Window) -> [2]f32 {
-	mouse: [2]f32
-	_ = sdl3.GetGlobalMouseState(&mouse[0], &mouse[1])
+	mouse, _ := platform_mouse_state()
 	return window_point(window, mouse / UI_UNIT_POINTS)
 }
 
 show_window :: proc(window: ^Window) -> bool {
-	// Prime hidden content before making the window visible.
-	present_window(window)
-	if !sdl3.ShowWindow(window.handle) {
+	if !platform_show_window(window, true) {
 		return false
 	}
-	sync_window_scale(window)
+	sync_window_geometry(window)
 	return true
 }
 
-@(private="package")
-find_window :: proc(app: ^UI, id: sdl3.WindowID) -> ^Window {
-	for window in app.windows {
-		if sdl3.GetWindowID(window.handle) == id {
-			return window
-		}
-	}
-	return nil
-}
-
-@(private="package")
-release_window_resources :: proc(window: ^Window_Resources) {
-	release_text_resources(window)
-	if window.renderer != nil {
-		sdl3.DestroyRenderer(window.renderer)
-	}
-	if window.handle != nil {
-		sdl3.DestroyWindow(window.handle)
-	}
-	window^ = {}
-}
-
-// Creation-only flag changes are performed by Fluid before the next draw.
-set_window_flags :: proc(window: ^Window, flags: sdl3.WindowFlags) {
-	assert(window.handle != nil)
-	window.requested_flags = flags
+hide_window :: proc(window: ^Window) -> bool {
+	return platform_show_window(window, false)
 }
 
 // Physical renderer pixels per UI unit.
@@ -247,7 +149,7 @@ pixel_scale :: proc(window: ^Window) -> f32 {
 	return window.display_scale * UI_UNIT_POINTS
 }
 
-// Native SDL window coordinates per UI unit.
+// Native client coordinates per UI unit.
 window_scale :: proc(window: ^Window) -> f32 {
 	return window.coordinate_scale * UI_UNIT_POINTS
 }
@@ -262,68 +164,66 @@ window_point :: proc(window: ^Window, point: [2]f32) -> [2]f32 {
 }
 
 set_window_position :: proc(window: ^Window, position: [2]f32) -> bool {
-	if !sdl3.SetWindowPosition(window.handle, i32(position[0] * UI_UNIT_POINTS), i32(position[1] * UI_UNIT_POINTS)) {
+	if !platform_set_window_position(window, {i32(position[0] * UI_UNIT_POINTS), i32(position[1] * UI_UNIT_POINTS)}) {
 		return false
 	}
-	sync_window_scale(window)
+	sync_window_geometry(window)
 	return true
 }
 
 set_window_size :: proc(window: ^Window, size: [2]f32) -> bool {
 	native_size := native_window_size(size, window.coordinate_scale)
-	if !sdl3.SetWindowSize(window.handle, native_size[0], native_size[1]) {
+	if !platform_set_window_size(window, native_size) {
 		return false
 	}
-	sync_window_scale(window)
-	sync_viewport(window)
+	sync_window_geometry(window)
 	return true
 }
 
-@(private="file")
+@(private="package")
 native_window_size :: proc(size: [2]f32, coordinate_scale: f32) -> [2]i32 {
 	scale := coordinate_scale * UI_UNIT_POINTS
 	return {i32(math.round(size[0] * scale)), i32(math.round(size[1] * scale))}
 }
 
-@(private="file")
-window_scales :: proc(handle: ^sdl3.Window) -> (display_scale, coordinate_scale: f32) {
-	density := sdl3.GetWindowPixelDensity(handle)
-	if density <= 0 {
-		density = 1
-	}
-	display_scale = sdl3.GetWindowDisplayScale(handle)
-	if display_scale <= 0 {
-		display_scale = density
-	}
-	return display_scale, display_scale / density
-}
-
-@(private="file")
-apply_window_minimum_size :: proc(window: ^Window_Resources) -> bool {
-	size := native_window_size(window.minimum_size, window.coordinate_scale)
-	return sdl3.SetWindowMinimumSize(window.handle, max(i32(1), size[0]), max(i32(1), size[1]))
-}
-
 @(private="package")
-sync_window_scale :: proc(window: ^Window) {
-	display_scale, coordinate_scale := window_scales(window.handle)
+sync_window_geometry :: proc(window: ^Window) {
+	display_scale, coordinate_scale := platform_window_scales(window)
 	if display_scale != window.display_scale {
 		window.display_scale = display_scale
-		resize_fonts(window)
+		release_window_text(window)
 	}
 	if coordinate_scale != window.coordinate_scale {
 		window.coordinate_scale = coordinate_scale
-		if !apply_window_minimum_size(&window.native) {
-			fmt.eprintln("Cannot update window minimum size:", sdl3.GetError())
+		if window.clip != nil {
+			_ = platform_set_window_clip(window, window.clip)
 		}
-		sync_viewport(window)
 	}
+	size := platform_window_size(window)
+	scale := window_scale(window)
+	get_element(window.ui, window.viewport).pins = Pins{right = f32(size[0]) / scale, bottom = f32(size[1]) / scale}
+	density := display_scale / coordinate_scale
+	window.drawable_size = {i32(math.round(f32(size[0]) * density)), i32(math.round(f32(size[1]) * density))}
 }
 
-@(private="package")
-sync_viewport :: proc(window: ^Window) {
-	w, h: i32
-	assert(sdl3.GetWindowSize(window.handle, &w, &h))
-	scale := window_scale(window)
-	get_element(window.ui, window.viewport).pins = Pins{right = f32(w) / scale, bottom = f32(h) / scale}
+Window_Circle :: struct {
+	center: [2]f32,
+	radius: f32,
+}
+
+// The clip is specified in window-local UI units. Pass nil to clear it.
+// Platforms that clip the drawable require a transparent window.
+set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) -> bool {
+	assert(window.open)
+	if shape, clipped := circle.?; clipped {
+		assert(shape.radius >= 0)
+		if platform_clips_drawable && !window.renderer.transparent {
+			return false
+		}
+	}
+	if !platform_set_window_clip(window, circle) {
+		return false
+	}
+	window.clip = circle
+	return true
 }

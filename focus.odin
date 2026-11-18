@@ -1,7 +1,5 @@
 package fluid
 
-import "vendor:sdl3"
-
 set_focusable :: proc(ui: ^UI, id: Element_ID, focusable: bool = true) {
 	get_element(ui, id).focusable = focusable
 }
@@ -76,9 +74,9 @@ focused_in :: proc(ui: ^UI, window: ^Window) -> Element_ID {
 }
 
 @(private="package")
-handle_key :: proc(ui: ^UI, window: ^Window, event: sdl3.KeyboardEvent) -> bool {
-	if event.down && event.key == sdl3.K_TAB {
-		focus_next(ui, window, event.mod & sdl3.KMOD_SHIFT != {})
+handle_key :: proc(ui: ^UI, window: ^Window, event: Keyboard_Event) -> bool {
+	if event.down && event.key == Key.Tab {
+		focus_next(ui, window, event.modifiers & {.Shift} != {})
 		return true
 	}
 	id := focused_in(ui, window)
@@ -88,7 +86,7 @@ handle_key :: proc(ui: ^UI, window: ^Window, event: sdl3.KeyboardEvent) -> bool 
 	if send_element_event(ui, id, event) {
 		return true
 	}
-	activate := event.key == sdl3.K_SPACE || event.key == sdl3.K_RETURN || event.key == sdl3.K_KP_ENTER
+	activate := event.key == Key.Space || event.key == Key.Enter || event.key == Key.Keypad_Enter
 	if activate && event.down && !event.repeat && is_active(ui, id) && accepts_press(get_element(ui, id)) {
 		queue_press(ui, id)
 	}

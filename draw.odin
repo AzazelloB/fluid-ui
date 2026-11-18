@@ -1,15 +1,7 @@
 package fluid
 
-import "vendor:sdl3"
-
 // Draw without presenting, so applications can composite their own effects.
 draw :: proc(app: ^UI, window: ^Window) {
-	renderer := window.renderer
-	background := window.background
-	sdl3.SetRenderDrawColor(renderer, background.r, background.g, background.b, background.a)
-	sdl3.RenderClear(renderer)
-	sdl3.SetRenderDrawBlendMode(renderer, sdl3.BLENDMODE_BLEND)
-
 	for id in app.active {
 		element := get_element(app, id)
 		if coordinate_window(element) != window {
@@ -51,11 +43,11 @@ draw_element_label :: proc(view: Element_View) {
 	}
 }
 
-pixel_rect :: proc(r: Pins, scale: f32) -> sdl3.FRect {
+pixel_rect :: proc(r: Pins, scale: f32) -> FRect {
 	return {r.left * scale, r.top * scale, width(r) * scale, height(r) * scale}
 }
 
-draw_surface :: proc(renderer: ^sdl3.Renderer, pixels: sdl3.FRect, style: Style,
+draw_surface :: proc(renderer: ^Renderer, pixels: FRect, style: Style,
 	color: Color, hovered, focused: bool, scale: f32,
 ) {
 	border_color := style.border
@@ -76,8 +68,26 @@ draw_surface :: proc(renderer: ^sdl3.Renderer, pixels: sdl3.FRect, style: Style,
 }
 
 @(private="package")
-draw_focus :: proc(renderer: ^sdl3.Renderer, pixels: sdl3.FRect, color: Color) {
-	_ = sdl3.SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a)
-	pixel_bounds := pixels
-	_ = sdl3.RenderRect(renderer, &pixel_bounds)
+draw_focus :: proc(renderer: ^Renderer, pixels: FRect, color: Color) {
+	render_rect(renderer, pixels, color)
+}
+
+@(private="package")
+present_window :: proc(window: ^Window) -> bool {
+	if !render_begin(window.renderer, window.drawable_size, window.background) {
+		return false
+	}
+	draw(window.ui, window)
+	effect := window.effect
+	if effect.draw != nil {
+		effect.draw(effect.data, window, f32(effect.elapsed / effect.duration))
+	}
+	clip: Maybe(Window_Circle)
+	when platform_clips_drawable {
+		if circle, clipped := window.clip.?; clipped {
+			scale := pixel_scale(window)
+			clip = Window_Circle{circle.center * scale, circle.radius * scale}
+		}
+	}
+	return render_present(window.renderer, clip)
 }

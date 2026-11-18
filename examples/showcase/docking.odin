@@ -3,7 +3,6 @@ package main
 import "core:fmt"
 import fluid "../.."
 import "../../elements"
-import "vendor:sdl3"
 
 Dock :: enum {Left, Right, Bottom}
 CARD_SIZE :: [2]f32{15, 9}
@@ -61,7 +60,7 @@ move_floating_window :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) -> bo
 	grab := page.grab * (fluid.window_scale(window) / fluid.UI_UNIT_POINTS)
 	position := fluid.desktop_point(ui.window, mouse) - grab
 	if !fluid.set_window_position(window, position) {
-		fmt.eprintln(sdl3.GetError())
+		fmt.eprintln("Cannot move floating window")
 		return false
 	}
 	fill_floating_window(page, ui)
@@ -74,7 +73,7 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 			title = "Fluid card",
 			size = CARD_SIZE,
 			minimum_size = {7.5, 5},
-			flags = {.HIDDEN},
+			flags = {.Hidden},
 		})
 		if window == nil {
 			page.detach_failed = true
@@ -94,7 +93,7 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 	fluid.set_label(ui, page.card, "Drag back to dock")
 	if !fluid.show_window(window) {
 		page.detach_failed = true
-		fmt.eprintln(sdl3.GetError())
+		fmt.eprintln("Cannot show floating window")
 		return_card(page, ui)
 	}
 }
@@ -195,7 +194,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		fluid.rebase_drag(ui, page.card)
 		if page.floating_scene != nil && owner == page.floating_scene.window {
 			if !fluid.set_window_size(owner, CARD_SIZE) {
-				fmt.eprintln(sdl3.GetError())
+				fmt.eprintln("Cannot resize floating window")
 			}
 		}
 		fluid.activate(page.targets)
@@ -217,7 +216,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		fluid.set_layout(ui, page.card, card_at(position))
 		fluid.rebase_drag(ui, page.card)
 		// Keep capture's source alive, but do not obscure the destination with it.
-		_ = sdl3.HideWindow(page.floating_scene.window.handle)
+		_ = fluid.hide_window(page.floating_scene.window)
 		card_is_floating = false
 	}
 	selected: Maybe(Dock)

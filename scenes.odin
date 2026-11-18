@@ -11,7 +11,7 @@ Scene :: struct {
 }
 
 create_scene :: proc(window: ^Window) -> ^Scene {
-	assert(window.handle != nil)
+	assert(window.open)
 	app := window.ui
 	context.allocator = virtual.arena_allocator(&window.storage)
 	result := new(Scene)
@@ -23,7 +23,7 @@ create_scene :: proc(window: ^Window) -> ^Scene {
 }
 
 activate :: proc(scene: ^Scene) {
-	assert(scene.window.handle != nil, "Cannot activate a scene in a closed window")
+	assert(scene.window.open, "Cannot activate a scene in a closed window")
 	if scene.active {
 		return
 	}
@@ -44,11 +44,11 @@ deactivate :: proc(scene: ^Scene) {
 // Move the actual element, keeping its ID and animation progress.
 // Literal positions and animation origins are rebased to preserve screen space.
 transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
-	assert(destination.ui == app && destination.window.handle != nil)
+	assert(destination.ui == app && destination.window.open)
 	element := get_element(app, id)
 	source := element.owner
 	assert(source != nil)
-	assert(source.window.handle != nil, "Transfer elements before closing their window")
+	assert(source.window.open, "Transfer elements before closing their window")
 	if source == destination {
 		return
 	}

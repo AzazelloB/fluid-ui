@@ -8,6 +8,6 @@ main :: proc() {
 		title = "Fluid UI",
 		size = {62.5, 43.75},
 		minimum_size = {56.25, 33.75},
-		flags = {.TRANSPARENT, .BORDERLESS},
+		flags = {.Transparent},
 	}, &app, create_showcase)
 }

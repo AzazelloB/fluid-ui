@@ -1,13 +1,11 @@
 package fluid
 
-import "vendor:sdl3"
-
 // Capture sends subsequent motion and release to this element even outside
 // its bounds. On release or cancellation the engine drops capture first.
 capture_pointer :: proc(ui: ^UI, id: Element_ID) {
 	if is_active(ui, id) && ui.pressed == id {
 		ui.captured = id
-		_ = sdl3.CaptureMouse(true)
+		platform_capture_mouse(element_window(ui, id))
 	}
 }
 
@@ -24,14 +22,14 @@ pointer_target :: proc(ui: ^UI) -> Element_ID {
 release_capture :: proc(ui: ^UI, id: Element_ID) {
 	if ui.captured == id {
 		ui.captured = NO_ELEMENT
-		_ = sdl3.CaptureMouse(false)
+		platform_capture_mouse(nil)
 	}
 }
 
 @(private="package")
 cancel_pointer :: proc(ui: ^UI, id: Element_ID) {
 	release_capture(ui, id)
-	send_element_event(ui, id, Pointer_Event{kind = .Cancel, timestamp = sdl3.GetTicksNS()})
+	send_element_event(ui, id, Pointer_Event{kind = .Cancel, timestamp = monotonic_ns()})
 }
 
 @(private="package")

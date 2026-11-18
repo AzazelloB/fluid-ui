@@ -2,7 +2,6 @@ package fluid
 
 import "core:mem"
 import "core:os"
-import "vendor:sdl3"
 
 @(private="package")
 Window_Effect :: struct {
@@ -27,7 +26,7 @@ window_effect :: proc(window: ^Window, duration: f64, owner: ^$Owner,
 	draw: proc(owner: ^Owner, window: ^Window, progress: f32),
 	complete: proc(owner: ^Owner, window: ^Window) = nil,
 ) {
-	assert(window.handle != nil && duration > 0 && owner != nil && draw != nil)
+	assert(window.open && duration > 0 && owner != nil && draw != nil)
 	binding := new(Effect_Binding(Owner), os.heap_allocator())
 	binding^ = {owner, draw, complete}
 	cancel_window_effect(window)
@@ -54,9 +53,11 @@ cancel_window_effect :: proc(window: ^Window) {
 @(private="package")
 advance_window_effects :: proc(ui: ^UI, dt: f64) {
 	// Window callbacks can close/create windows. Viewport IDs guard recycled slots.
-	viewports := make([]Element_ID, len(ui.windows), context.temp_allocator)
-	for window, i in ui.windows {
-		viewports[i] = window.viewport
+	viewports := make([dynamic]Element_ID, 0, context.temp_allocator)
+	for window in ui.windows {
+		if window.effect.draw != nil {
+			append(&viewports, window.viewport)
+		}
 	}
 	for id in viewports {
 		if !ui.running {
@@ -67,7 +68,7 @@ advance_window_effects :: proc(ui: ^UI, dt: f64) {
 		}
 		window := element_window(ui, id)
 		effect := &window.effect
-		if effect.draw == nil || effect.frame == ui.frame || .HIDDEN in sdl3.GetWindowFlags(window.handle) {
+		if effect.draw == nil || effect.frame == ui.frame || !platform_window_visible(window) {
 			continue
 		}
 		if !effect.started {
@@ -82,14 +83,4 @@ advance_window_effects :: proc(ui: ^UI, dt: f64) {
 			mem.free(finished.data, os.heap_allocator())
 		}
 	}
-}
-
-@(private="package")
-present_window :: proc(window: ^Window) {
-	draw(window.ui, window)
-	effect := window.effect
-	if effect.draw != nil {
-		effect.draw(effect.data, window, f32(effect.elapsed / effect.duration))
-	}
-	sdl3.RenderPresent(window.renderer)
 }

@@ -1,69 +1,13 @@
 package fluid
 
-import "core:fmt"
 import "core:math"
-import "vendor:sdl3"
-import ttf "vendor:sdl3/ttf"
 
 @(private="package")
 DEFAULT_TEXT_COLOR :: Color{230, 236, 244, 255}
 
-@(private="package")
-create_text_resources :: proc(window: ^Window_Resources) -> bool {
-	primary: cstring = "/System/Library/Fonts/SFNS.ttf"
-	fallback: cstring = "/System/Library/Fonts/Supplemental/Arial.ttf"
-	when ODIN_OS == .Windows {
-		system_root := sdl3.GetEnvironmentVariable(sdl3.GetEnvironment(), "SystemRoot")
-		primary = fmt.ctprintf("%s/Fonts/segoeui.ttf", system_root)
-		fallback = fmt.ctprintf("%s/Fonts/arial.ttf", system_root)
-	}
-	for size in Text_Size {
-		pixels := font_pixels(size, window.display_scale)
-		font := ttf.OpenFont(primary, pixels)
-		if font == nil {
-			font = ttf.OpenFont(fallback, pixels)
-		}
-		if font == nil {
-			return false
-		}
-		window.fonts[.Regular][size] = font
-		bold := ttf.CopyFont(font)
-		if bold == nil {
-			return false
-		}
-		ttf.SetFontStyle(bold, {.BOLD})
-		window.fonts[.Bold][size] = bold
-	}
-	window.text_engine = ttf.CreateRendererTextEngine(window.renderer)
-	return window.text_engine != nil
-}
-
-@(private="package")
-release_text_resources :: proc(window: ^Window_Resources) {
-	if window.text_engine != nil {
-		ttf.DestroyRendererTextEngine(window.text_engine)
-	}
-	for sizes in window.fonts {
-		for font in sizes {
-			if font != nil {
-				ttf.CloseFont(font)
-			}
-		}
-	}
-}
-
-@(private="file")
-font_pixels :: proc(size: Text_Size, display_scale: f32) -> f32 {
-	return text_size_units(size) * UI_UNIT_POINTS * display_scale
-}
-
-@(private="package")
-	resize_fonts :: proc(window: ^Window) {
-	for weight in Text_Weight {
-		for size in Text_Size {
-			assert(ttf.SetFontSize(window.fonts[weight][size], font_pixels(size, window.display_scale)))
-		}
-	}
+Text_Style :: struct {
+	pixels: f32,
+	bold: bool,
 }
 
 @(private="file")
@@ -74,48 +18,52 @@ wrap_width_pixels :: proc(width, scale: f32) -> i32 {
 measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
 	weight: Text_Weight = .Regular, wrap_width: f32 = 0,
 ) -> (f32, f32) {
-	pixel_width, pixel_height: i32
 	scale := pixel_scale(window)
-	font := window.fonts[weight][size]
-	if wrap_width > 0 {
-		assert(ttf.GetStringSizeWrapped(font, raw_data(label), len(label),
-			wrap_width_pixels(wrap_width, scale), &pixel_width, &pixel_height))
-	} else {
-		assert(ttf.GetStringSize(font, raw_data(label), len(label), &pixel_width, &pixel_height))
+	text := create_text(text_font(window, size, weight), label)
+	if text == nil {
+		return 0, 0
 	}
-	return f32(pixel_width) / scale, f32(pixel_height) / scale
+	defer native_text_destroy(text)
+	if wrap_width > 0 {
+		_ = set_wrap_width(text, wrap_width_pixels(wrap_width, scale))
+	}
+	pixels := text_dimensions(text)
+	return f32(pixels[0]) / scale, f32(pixels[1]) / scale
 }
 
 text_line_height :: proc(window: ^Window, size: Text_Size = .Body, weight: Text_Weight = .Regular) -> f32 {
-	scale := pixel_scale(window)
-	return f32(ttf.GetFontLineSkip(window.fonts[weight][size])) / scale
+	font := text_font(window, size, weight)
+	_, line_height := text_font_metrics(font.pixels, font.bold)
+	return f32(line_height) / pixel_scale(window)
 }
 
-// Borrow the window font for the requested style.
-text_font :: proc(window: ^Window, size: Text_Size, weight: Text_Weight) -> ^ttf.Font {
-	return window.fonts[weight][size]
+text_font :: proc(window: ^Window, size: Text_Size, weight: Text_Weight) -> Text_Style {
+	return {text_size_units(size) * pixel_scale(window), weight == .Bold}
 }
 
-// Cached text tied to an element follows its style and renderer lifetime.
-element_text :: proc(view: Element_View, placeholder: string = "") -> ^ttf.Text {
+create_text :: proc(font: Text_Style, label: string) -> ^Text {
+	return native_text_create(label, font.pixels, font.bold)
+}
+
+// Cached text follows its element's style and window scale.
+element_text :: proc(view: Element_View, placeholder: string = "") -> ^Text {
 	element := get_element(view.ui, view.id)
 	content := element.label != "" ? element.label : placeholder
 	if content == "" {
 		return nil
 	}
-	return cached_text(view.window, &element.text, text_font(view.window, element.text_size, element.text_weight), content)
+	return cached_text(&element.text, text_font(view.window, element.text_size, element.text_weight), content)
 }
 
-// Create a renderer text object on first use.
-cached_text :: proc(window: ^Window, cache: ^^ttf.Text, font: ^ttf.Font, label: string) -> ^ttf.Text {
+cached_text :: proc(cache: ^^Text, font: Text_Style, label: string) -> ^Text {
 	if cache^ == nil {
-		cache^ = ttf.CreateText(window.text_engine, font, raw_data(label), len(label))
+		cache^ = create_text(font, label)
 	}
 	return cache^
 }
 
 @(private="package")
-update_cached_text :: proc(cache: ^^ttf.Text, label: string) {
+update_cached_text :: proc(cache: ^^Text, label: string) {
 	if cache^ == nil {
 		return
 	}
@@ -123,62 +71,61 @@ update_cached_text :: proc(cache: ^^ttf.Text, label: string) {
 		release_cached_text(cache)
 		return
 	}
-	assert(ttf.SetTextString(cache^, raw_data(label), len(label)))
-}
-
-// Set a text object’s wrap width in physical pixels.
-set_wrap_width :: proc(text: ^ttf.Text, pixels: i32) -> bool {
-	previous: i32
-	return ttf.GetTextWrapWidth(text, &previous) &&
-		(previous == pixels || ttf.SetTextWrapWidth(text, pixels))
+	native_text_set_string(cache^, label)
 }
 
 // Draw text at a physical pixel position.
-paint_text :: proc(text: ^ttf.Text, color: Color, x, y: f32) -> bool {
-	colored := ttf.SetTextColor(text, color.r, color.g, color.b, color.a)
-	drawn := ttf.DrawRendererText(text, x, y)
-	return colored && drawn
+paint_text :: proc(renderer: ^Renderer, text: ^Text, color: Color, x, y: f32) {
+	if text == nil || color.a == 0 {
+		return
+	}
+	clip := renderer.clip
+	visible := IRect{clip.x - i32(math.round(x)), clip.y - i32(math.round(y)), clip.w, clip.h}
+	offset, size, alpha := native_text_mask(text, visible)
+	if len(alpha) > 0 {
+		render_mask(renderer, {x + f32(offset[0]), y + f32(offset[1])}, size, alpha, color)
+	}
 }
 
 // Draw text in UI-unit bounds with alignment and wrapping.
-draw_label :: proc(window: ^Window, text: ^ttf.Text, rect: Pins, color: Color,
+draw_label :: proc(window: ^Window, text: ^Text, rect: Pins, color: Color,
 	align: Text_Align = .Center, wrap: bool = false,
 ) {
-	assert(text != nil)
+	if text == nil {
+		return
+	}
 	scale := pixel_scale(window)
-	assert(set_wrap_width(text, wrap ? wrap_width_pixels(width(rect), scale) : 0))
-	pixel_width, pixel_height: i32
-	assert(ttf.GetTextSize(text, &pixel_width, &pixel_height))
+	if !set_wrap_width(text, wrap ? wrap_width_pixels(width(rect), scale) : 0) {
+		return
+	}
+	pixels := text_dimensions(text)
 	x := rect.left * scale
 	switch align {
 	case .Left:
-	case .Center: x += (width(rect) * scale - f32(pixel_width)) / 2
-	case .Right: x = rect.right * scale - f32(pixel_width)
+	case .Center: x += (width(rect) * scale - f32(pixels[0])) / 2
+	case .Right: x = rect.right * scale - f32(pixels[0])
 	}
 	if wrap {
-		renderer := window.renderer
 		left := i32(math.round(rect.left * scale))
 		top := i32(math.round(rect.top * scale))
-		clip := sdl3.Rect{left, top, max(i32(0), i32(math.round(rect.right * scale)) - left),
+		clip := IRect{left, top, max(i32(0), i32(math.round(rect.right * scale)) - left),
 			max(i32(0), i32(math.round(rect.bottom * scale)) - top)}
-		assert(sdl3.SetRenderClipRect(renderer, &clip))
-		assert(paint_text(text, color, math.round(x), f32(top)))
-		assert(sdl3.SetRenderClipRect(renderer, nil))
+		previous_clip := render_clip(window.renderer, clip)
+		paint_text(window.renderer, text, color, math.round(x), f32(top))
+		restore_render_clip(window.renderer, previous_clip)
 	} else {
-		y := math.round(rect.top * scale + (height(rect) * scale - f32(pixel_height)) / 2)
-		assert(paint_text(text, color, math.round(x), y))
+		y := math.round(rect.top * scale + (height(rect) * scale - f32(pixels[1])) / 2)
+		paint_text(window.renderer, text, color, math.round(x), y)
 	}
 }
 
-// Release text before its renderer or font is replaced.
-release_cached_text :: proc(cache: ^^ttf.Text) {
+release_cached_text :: proc(cache: ^^Text) {
 	if cache^ != nil {
-		ttf.DestroyText(cache^)
+		native_text_destroy(cache^)
 		cache^ = nil
 	}
 }
 
-// Cached labels belong to the text engine that drew them.
 @(private="package")
 release_window_text :: proc(window: ^Window) {
 	for scene in window.scenes {

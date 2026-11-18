@@ -2,7 +2,6 @@ package elements
 
 import "core:math"
 import fluid ".."
-import "vendor:sdl3"
 
 @(private="package")
 control_input :: proc(data: rawptr, ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Element_Event) -> bool {
@@ -16,13 +15,13 @@ control_input :: proc(data: rawptr, ui: ^fluid.UI, id: fluid.Element_ID, event: 
 		}
 	case fluid.Focus_Event:
 		control_focus(control, ui, id, value)
-	case sdl3.KeyboardEvent:
+	case fluid.Keyboard_Event:
 		return control_key(control, ui, id, value)
-	case sdl3.TextEditingEvent:
+	case fluid.Text_Editing_Event:
 		if editor := editor_for(control); editor != nil {
 			update_preedit(editor, value)
 		}
-	case sdl3.TextInputEvent:
+	case fluid.Text_Input_Event:
 		if editor := editor_for(control); editor != nil {
 			clear_preedit(editor)
 			insert_text(ui, id, string(value.text), .Typing)
@@ -42,11 +41,11 @@ control_input :: proc(data: rawptr, ui: ^fluid.UI, id: fluid.Element_ID, event: 
 control_focus :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Focus_Event) {
 	if !event.focused {
 		if guard, ok := &control.state.(Guard_Control); ok && guard.holding {
-			stop_guard(ui, id, guard, sdl3.GetTicksNS(), false)
+			stop_guard(ui, id, guard, fluid.monotonic_ns(), false)
 		}
 		if editor := editor_for(control); editor != nil {
 			clear_preedit(editor)
-			_ = sdl3.StopTextInput(fluid.element_window(ui, id).handle)
+			fluid.set_text_input(fluid.element_window(ui, id), false)
 			finish_number_edit(ui, id, event.commit)
 		}
 		return
@@ -57,24 +56,24 @@ control_focus :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, ev
 		editor.manual_scroll = false
 		editor.caret = len(fluid.element_view(ui, id).label)
 		editor.anchor = editor.caret
-		_ = sdl3.StartTextInput(fluid.element_window(ui, id).handle)
+		fluid.set_text_input(fluid.element_window(ui, id), true)
 	}
 }
 
 @(private="file")
-control_key :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, event: sdl3.KeyboardEvent) -> bool {
+control_key :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Keyboard_Event) -> bool {
 	if editor := editor_for(control); editor != nil && event.down {
-		if event.key != sdl3.K_ESCAPE || is_number_edit(control) || editor.preedit != "" {
+		if event.key != fluid.Key.Escape || is_number_edit(control) || editor.preedit != "" {
 			edit_key(ui, id, event)
 		} else {
 			fluid.blur(ui)
 		}
 		return true
 	}
-	if event.down && event.key == sdl3.K_ESCAPE {
+	if event.down && event.key == fluid.Key.Escape {
 		return false
 	}
-	activate := event.key == sdl3.K_SPACE || event.key == sdl3.K_RETURN || event.key == sdl3.K_KP_ENTER
+	activate := event.key == fluid.Key.Space || event.key == fluid.Key.Enter || event.key == fluid.Key.Keypad_Enter
 	direction := control_key_direction(event.key)
 	switch &state in control.state {
 	case Toggle_Control:
@@ -105,10 +104,10 @@ control_key :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, even
 }
 
 @(private="file")
-control_key_direction :: proc(key: sdl3.Keycode) -> int {
-	switch key {
-	case sdl3.K_RIGHT, sdl3.K_UP: return 1
-	case sdl3.K_LEFT, sdl3.K_DOWN: return -1
+control_key_direction :: proc(key: fluid.Key) -> int {
+	#partial switch key {
+	case fluid.Key.Right, fluid.Key.Up: return 1
+	case fluid.Key.Left, fluid.Key.Down: return -1
 	}
 	return 0
 }
@@ -120,7 +119,7 @@ control_press :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, ev
 	case Toggle_Control:
 		emit_change(ui, id, !fluid.element_view(ui, id).selected)
 	case Guard_Control:
-		start_guard(&state, event.timestamp, 0)
+		start_guard(&state, event.timestamp, .Unknown)
 	case Choice_Control:
 		r := fluid.bounds(ui, id)
 		count := choice_slot_count(&state)
@@ -146,7 +145,7 @@ control_press :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, ev
 		}
 		fluid.capture_pointer(ui, id)
 	case Text_Control:
-		place_caret(ui, id, point, sdl3.GetModState() & sdl3.KMOD_SHIFT != {}, max(event.clicks, 1))
+		place_caret(ui, id, point, event.modifiers & {.Shift} != {}, max(event.clicks, 1))
 		fluid.capture_pointer(ui, id)
 	case Button_Control:
 	}
@@ -154,7 +153,7 @@ control_press :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, ev
 
 @(private="file")
 control_move :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Pointer_Event) {
-	if guard, ok := &control.state.(Guard_Control); ok && guard.holding && guard.key == 0 && !event.inside {
+	if guard, ok := &control.state.(Guard_Control); ok && guard.holding && guard.key == .Unknown && !event.inside {
 		stop_guard(ui, id, guard, event.timestamp, false)
 	}
 	if !fluid.pointer_captured(ui, id) {
@@ -191,7 +190,7 @@ control_release :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, 
 		}
 		show_choice(&state, state.selected)
 	case Guard_Control:
-		if state.holding && state.key == 0 {
+		if state.holding && state.key == .Unknown {
 			stop_guard(ui, id, &state, event.timestamp, released && event.inside)
 		}
 	case Button_Control, Toggle_Control, Number_Control, Text_Control:
@@ -211,7 +210,7 @@ GUARD_CLICK_NS :: 180_000_000
 GUARD_RESET_NS :: 500_000_000
 
 @(private="file")
-start_guard :: proc(guard: ^Guard_Control, now: u64, key: sdl3.Keycode) {
+start_guard :: proc(guard: ^Guard_Control, now: u64, key: fluid.Key) {
 	if guard.holding {
 		return
 	}

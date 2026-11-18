@@ -1,8 +1,5 @@
 package fluid
 
-import "vendor:sdl3"
-import ttf "vendor:sdl3/ttf"
-
 UI_UNIT_POINTS :: f32(16)
 
 Text_Size :: enum {Body, Caption, Heading, Title}
@@ -30,7 +27,7 @@ Style :: struct {
 }
 
 Pointer_Behavior :: enum {Auto, Pass, Block}
-Color :: sdl3.Color
+Color :: struct {r, g, b, a: u8}
 
 // Plain numbers are multiples of the UI's base font size. Pins describe an
 // axis-aligned rectangle; right/bottom are coordinates, not dimensions.
@@ -57,7 +54,7 @@ Element :: struct {
 	alive:         bool,
 	space:         ^Window, // Viewport sources have no scene.
 	pins:          Pins,
-	color:         sdl3.Color,
+	color:         Color,
 	label:         string,
 	style:         Style,
 	text_size:     Text_Size,
@@ -65,7 +62,7 @@ Element :: struct {
 	text_weight:   Text_Weight,
 	text_wrap:     bool,
 	text_color:    Color,
-	text:          ^ttf.Text,
+	text:          ^Text,
 	selected:      bool,
 	focusable:     bool,
 	behavior:      Element_Behavior,

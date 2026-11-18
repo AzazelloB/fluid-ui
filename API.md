@@ -17,7 +17,9 @@ and `destroy` when the element is removed.
 
 Use `fluid.set_draw` to replace drawing on an engine element or a stock
 control. The callback receives an `Element_View` with the current bounds,
-text style, and interaction state. The Controls showcase paints the Name
+text style, and interaction state. `render_clip` intersects the current drawing
+clip and returns the previous rectangle for `restore_render_clip`. The Controls
+showcase paints the Name
 field in application code and calls `elements.draw_field_text` to draw editing
 content with app-specified placeholder, selection, and caret colors. Custom choice drawing can read `elements.choice_slots` and
 `elements.choice_slot`, including drag previews. Custom confirmation drawing
@@ -28,7 +30,7 @@ can read `elements.confirmation_progress` for the animated fill.
 All public lengths are plain `f32` values in UI units. One UI unit equals
 16 logical points (`UI_UNIT_POINTS`). Pins, radii, text measurements, window
 sizes and positions, and pointer coordinates use that unit. Display density is
-handled at the SDL boundary.
+handled by the platform window and Vulkan renderer.
 
 ## Pass values
 
@@ -103,10 +105,15 @@ It rebases the element and animation origins to preserve their desktop positions
 
 `pointer_position`, `set_window_size`, and window configuration use UI units
 scaled for the window's display. `window_position` and `set_window_position`
-use shared desktop coordinates, expressed in SDL desktop units divided by
+use shared desktop coordinates, expressed in native desktop units divided by
 `UI_UNIT_POINTS`. Use `desktop_point` and `window_point` to convert between
-these spaces. Multiply UI units by `window_scale(window)` for native SDL
-window coordinates or by `pixel_scale(window)` for SDL renderer pixels.
+these spaces. Multiply UI units by `window_scale(window)` for native client
+coordinates or by `pixel_scale(window)` for physical renderer pixels.
+
+`set_window_clip(window, Window_Circle{center, radius})` clips the window in
+local UI units. Pass `nil` to restore the full window. On macOS the window
+requires `.Transparent` for drawable clipping. `window_effect` can animate
+this clip or draw other overlays; the application supplies the timing and shape.
 
 ## Direct controls
 

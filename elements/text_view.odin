@@ -3,40 +3,38 @@ package elements
 import fluid ".."
 
 import "core:strings"
-import "vendor:sdl3"
-import ttf "vendor:sdl3/ttf"
 
 @(private="package")
-move_caret_line :: proc(element: Control_View, editor: ^Editor, key: sdl3.Keycode, document: bool) -> int {
+move_caret_line :: proc(element: Control_View, editor: ^Editor, key: fluid.Key, document: bool) -> int {
 	field, is_text := element.control.state.(Text_Control)
 	if document || !is_text || !field.multiline {
-		return key == sdl3.K_HOME || key == sdl3.K_UP || key == sdl3.K_PAGEUP ? 0 : len(element.label)
+		return key == fluid.Key.Home || key == fluid.Key.Up || key == fluid.Key.Page_Up ? 0 : len(element.label)
 	}
 	view := editor_view(element, editor)
 	if view.text == nil {
 		return 0
 	}
 	caret := view.caret
-	line: ttf.SubString
-	_ = ttf.GetTextSubStringForLine(view.text, caret.line_index, &line)
-	switch key {
-	case sdl3.K_HOME: return int(line.offset)
-	case sdl3.K_END: return line_end_offset(element.label, line)
-	case sdl3.K_UP, sdl3.K_DOWN, sdl3.K_PAGEUP, sdl3.K_PAGEDOWN:
-		page := key == sdl3.K_PAGEUP || key == sdl3.K_PAGEDOWN
+	line: fluid.Text_Span
+	_ = fluid.text_line(view.text, caret.line_index, &line)
+	#partial switch key {
+	case fluid.Key.Home: return int(line.offset)
+	case fluid.Key.End: return line_end_offset(element.label, line)
+	case fluid.Key.Up, fluid.Key.Down, fluid.Key.Page_Up, fluid.Key.Page_Down:
+		page := key == fluid.Key.Page_Up || key == fluid.Key.Page_Down
 		step := page ? max(1, view.clip.h / max(1, caret.rect.h)) : 1
-		target := caret.line_index + (key == sdl3.K_UP || key == sdl3.K_PAGEUP ? -step : step)
+		target := caret.line_index + (key == fluid.Key.Up || key == fluid.Key.Page_Up ? -step : step)
 		if target < 0 {
 			return 0
 		}
-		if !ttf.GetTextSubStringForLine(view.text, target, &line) || line.line_index != target {
+		if !fluid.text_line(view.text, target, &line) || line.line_index != target {
 			return len(element.label)
 		}
 		if editor.column == nil {
 			editor.column = caret.rect.x
 		}
-		offset := caret_at(view.text, element.label, editor.column.?, line.rect.y + line.rect.h / 2)
-		return clamp(offset, int(line.offset), line_end_offset(element.label, line))
+		offset, _ := fluid.text_hit(view.text, editor.column.?, line.rect.y + line.rect.h / 2)
+		return clamp(int(offset), int(line.offset), line_end_offset(element.label, line))
 	}
 	return editor.caret
 }
@@ -50,7 +48,7 @@ place_caret :: proc(ui: ^fluid.UI, id: fluid.Element_ID, point: [2]f32, extend: 
 	editor.column = nil
 	if clicks > 0 {
 		if editor.preedit != "" {
-			_ = sdl3.ClearComposition(element.window.handle)
+			fluid.clear_composition(element.window)
 			clear_preedit(editor)
 		}
 		editor.selection_clicks = extend ? 1 : clicks
@@ -66,15 +64,16 @@ place_caret :: proc(ui: ^fluid.UI, id: fluid.Element_ID, point: [2]f32, extend: 
 	scale := fluid.pixel_scale(element.window)
 	x, y := i32(point[0] * scale) - view.x, i32(point[1] * scale) - view.y
 	if editor.selection_clicks < 2 {
-		editor.caret = text_boundary(value, caret_at(view.text, value, x, y))
+		offset, _ := fluid.text_hit(view.text, x, y)
+		editor.caret = text_boundary(value, int(offset))
 		if !extend {
 			editor.anchor = editor.caret
 		}
 		return
 	}
 
-	under: ttf.SubString
-	if !ttf.GetTextSubStringForPoint(view.text, x, y, &under) {
+	under: fluid.Text_Span
+	if _, hit := fluid.text_hit(view.text, x, y, &under); !hit {
 		return
 	}
 	range := text_selection_range(value, int(under.offset), editor.selection_clicks)
@@ -90,21 +89,7 @@ place_caret :: proc(ui: ^fluid.UI, id: fluid.Element_ID, point: [2]f32, extend: 
 }
 
 @(private="file")
-caret_at :: proc(text: ^ttf.Text, value: string, x, y: i32) -> int {
-	under: ttf.SubString
-	if !ttf.GetTextSubStringForPoint(text, x, y, &under) {
-		return 0
-	}
-	offset := int(under.offset + (x > under.rect.x + under.rect.w / 2 ? under.length : 0))
-	line: ttf.SubString
-	if ttf.GetTextSubStringForLine(text, under.line_index, &line) {
-		return min(offset, line_end_offset(value, line))
-	}
-	return offset
-}
-
-@(private="file")
-line_end_offset :: proc(value: string, line: ttf.SubString) -> int {
+line_end_offset :: proc(value: string, line: fluid.Text_Span) -> int {
 	end := clamp(int(line.offset + line.length), 0, len(value))
 	if end > int(line.offset) && value[end - 1] == '\n' {
 		end -= 1
@@ -114,10 +99,10 @@ line_end_offset :: proc(value: string, line: ttf.SubString) -> int {
 
 @(private="file")
 Editor_View :: struct {
-	text: ^ttf.Text,
-	clip: sdl3.Rect,
+	text: ^fluid.Text,
+	clip: fluid.IRect,
 	x, y: i32,
-	caret: ttf.SubString,
+	caret: fluid.Text_Span,
 	composing: bool,
 	composition, selection: [2]int,
 	max_scroll_y: i32,
@@ -139,16 +124,16 @@ editor_view :: proc(element: Control_View, editor: ^Editor, compose: bool = fals
 		multiline = field.multiline
 	}
 	font := fluid.text_font(window, element.text_size, element.text_weight)
-	line_height := ttf.GetFontLineSkip(font)
+	font_height, line_height := fluid.text_font_metrics(font.pixels, font.bold)
 	view.caret.rect.h = line_height
 	if !multiline {
-		view.y = i32((r.top + r.bottom) * scale / 2) - ttf.GetFontHeight(font) / 2
+		view.y = i32((r.top + r.bottom) * scale / 2) - font_height / 2
 	}
 	caret := editor.caret
 	if compose && editor.preedit != "" {
 		low, high := min(editor.anchor, editor.caret), max(editor.anchor, editor.caret)
 		value := strings.concatenate({element.label[:low], editor.preedit, element.label[high:]}, context.temp_allocator)
-		view.text = ttf.CreateText(window.text_engine, font, raw_data(value), len(value))
+		view.text = fluid.create_text(font, value)
 		if view.text != nil {
 			view.composing = true
 			view.composition = {low, low + len(editor.preedit)}
@@ -166,10 +151,9 @@ editor_view :: proc(element: Control_View, editor: ^Editor, compose: bool = fals
 		assert(view.text != nil)
 	}
 	fluid.set_wrap_width(view.text, multiline ? max(1, view.clip.w) : 0)
-	_ = ttf.GetTextSubString(view.text, i32(caret), &view.caret)
+	_ = fluid.text_span(view.text, i32(caret), &view.caret)
 	if multiline {
-		text_height: i32
-		_ = ttf.GetTextSize(view.text, nil, &text_height)
+		text_height := fluid.text_dimensions(view.text)[1]
 		bottom := view.caret.rect.y + view.caret.rect.h
 		view.max_scroll_y = max(0, max(text_height, bottom) - view.clip.h)
 		if !editor.manual_scroll {
@@ -178,8 +162,7 @@ editor_view :: proc(element: Control_View, editor: ^Editor, compose: bool = fals
 		editor.scroll_y = clamp(editor.scroll_y, 0, view.max_scroll_y)
 		view.y -= editor.scroll_y
 	} else {
-		text_width: i32
-		_ = ttf.GetTextSize(view.text, &text_width, nil)
+		text_width := fluid.text_dimensions(view.text)[0]
 		if element.text_align == .Center && text_width < view.clip.w {
 			view.x += (view.clip.w - text_width) / 2
 		}
@@ -196,12 +179,12 @@ draw_editor :: proc(element: Control_View, editor: ^Editor, style: Field_Text_St
 	view := editor_view(element, editor, focused)
 	defer {
 		if view.composing {
-			ttf.DestroyText(view.text)
+			fluid.release_cached_text(&view.text)
 		}
 	}
 	renderer := window.renderer
-	_ = sdl3.SetRenderClipRect(renderer, &view.clip)
-	defer sdl3.SetRenderClipRect(renderer, nil)
+	previous_clip := fluid.render_clip(renderer, view.clip)
+	defer fluid.restore_render_clip(renderer, previous_clip)
 	if text := view.text; text != nil {
 		selection := [2]int{min(editor.anchor, editor.caret), max(editor.anchor, editor.caret)}
 		if view.composing {
@@ -213,44 +196,35 @@ draw_editor :: proc(element: Control_View, editor: ^Editor, style: Field_Text_St
 				draw_editor_range(renderer, view, view.composition, style.caret, true)
 			}
 		}
-		fluid.paint_text(text, element.text_color, f32(view.x), f32(view.y))
+		fluid.paint_text(renderer, text, element.text_color, f32(view.x), f32(view.y))
 	} else if field, ok := element.control.state.(Text_Control); ok && field.placeholder != "" {
 		text := fluid.element_text(element.view, field.placeholder)
 		if text != nil {
-			fluid.paint_text(text, style.placeholder, f32(view.x), f32(view.y))
+			fluid.paint_text(renderer, text, style.placeholder, f32(view.x), f32(view.y))
 		}
 	}
 	y := view.y + view.caret.rect.y
 	if focused && y + view.caret.rect.h > view.clip.y && y < view.clip.y + view.clip.h {
 		x := min(view.x + view.caret.rect.x, view.clip.x + view.clip.w - 1)
-		_ = sdl3.SetRenderDrawColor(renderer, style.caret.r, style.caret.g, style.caret.b, style.caret.a)
-		_ = sdl3.RenderLine(renderer, f32(x), f32(y), f32(x), f32(y + view.caret.rect.h - 1))
+		fluid.render_fill_rect(renderer, {f32(x), f32(y), 1, f32(view.caret.rect.h)}, style.caret)
 		scale := fluid.pixel_scale(window) / fluid.window_scale(window)
-		area := sdl3.Rect{i32(f32(x) / scale), i32(f32(y) / scale), 1, i32(f32(view.caret.rect.h) / scale)}
-		_ = sdl3.SetTextInputArea(window.handle, &area, 0)
+		area := fluid.IRect{i32(f32(x) / scale), i32(f32(y) / scale), 1, i32(f32(view.caret.rect.h) / scale)}
+		fluid.set_text_input_area(window, area)
 	}
 }
 
 @(private="file")
-draw_editor_range :: proc(renderer: ^sdl3.Renderer, view: Editor_View, range: [2]int, color: fluid.Color, underline: bool) {
+draw_editor_range :: proc(renderer: ^fluid.Renderer, view: Editor_View, range: [2]int, color: fluid.Color, underline: bool) {
 	if range[0] == range[1] {
 		return
 	}
-	count: i32
-	parts := ttf.GetTextSubStringsForRange(view.text, i32(range[0]), i32(range[1] - range[0]), &count)
-	if parts == nil {
-		return
-	}
-	defer sdl3.free(parts)
-	_ = sdl3.SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a)
-	for i in 0..<count {
-		part := parts[i].rect
-		pixels := sdl3.FRect{f32(view.x + part.x), f32(view.y + part.y), f32(max(1, part.w)), f32(part.h)}
+	for part in fluid.text_range(view.text, i32(range[0]), i32(range[1] - range[0])) {
+		pixels := fluid.FRect{f32(view.x + part.x), f32(view.y + part.y), f32(max(1, part.w)), f32(part.h)}
 		if underline {
 			pixels.y += max(0, pixels.h - 2)
 			pixels.h = 2
 		}
-		_ = sdl3.RenderFillRect(renderer, &pixels)
+		fluid.render_fill_rect(renderer, pixels, color)
 	}
 }
 

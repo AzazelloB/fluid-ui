@@ -3,8 +3,6 @@ package fluid
 import "core:fmt"
 import "core:mem"
 import virtual "core:mem/virtual"
-import "vendor:sdl3"
-import ttf "vendor:sdl3/ttf"
 
 // Keep the initialized UI at a stable address until destroy(ui).
 // The UI owns all registry storage and native resources for this session.
@@ -18,22 +16,14 @@ UI :: struct {
 	pressed:                           Element_ID,
 	focused, captured:                 Element_ID,
 	drag:                              Drag,
-	cursors:                           SDL_Cursors,
+	vulkan:                            Vulkan,
 	elements:                          [dynamic]Element, // Stable registry indices; never reordered.
 	active:                            [dynamic]Element_ID, // Draw order and processing membership.
 	events:                            [dynamic]Element_ID, // Mouse-down presses in the current frame.
 	storage:                           virtual.Arena,
 	previous:                          u64,
 	frame:                             u64,
-	sdl_ready, ttf_ready, arena_ready: bool,
-}
-
-Config :: struct {
-	title:        cstring,
-	size:         [2]f32,
-	minimum_size: [2]f32,
-	flags:        sdl3.WindowFlags,
-	background:   Maybe(Color),
+	platform_ready, arena_ready:       bool,
 }
 
 init :: proc(app: ^UI, config: Config) -> bool {
@@ -63,22 +53,19 @@ init :: proc(app: ^UI, config: Config) -> bool {
 	app.windows = make([dynamic]^Window)
 	app.free_windows = make([dynamic]^Window)
 	app.free_elements = make([dynamic]int)
-	if !sdl3.Init({.VIDEO}) {
-		fmt.eprintln("SDL initialization failed:", sdl3.GetError())
+	if !platform_init() {
+		fmt.eprintln("Cannot initialize native windowing")
 		return false
 	}
-	app.sdl_ready = true
-	app.cursors = create_cursors()
-	if !ttf.Init() {
-		fmt.eprintln(sdl3.GetError())
+	app.platform_ready = true
+	if !vulkan_init(&app.vulkan) {
 		return false
 	}
-	app.ttf_ready = true
 	app.window = create_window(app, config)
 	if app.window == nil {
 		return false
 	}
-	app.previous = sdl3.GetTicksNS()
+	app.previous = monotonic_ns()
 	success = true
 	return true
 }
@@ -87,12 +74,9 @@ destroy :: proc(app: ^UI) {
 	for len(app.windows) > 0 {
 		close_window(app.windows[len(app.windows) - 1])
 	}
-	if app.ttf_ready {
-		ttf.Quit()
-	}
-	if app.sdl_ready {
-		destroy_cursors(app.cursors)
-		sdl3.Quit()
+	vulkan_shutdown(&app.vulkan)
+	if app.platform_ready {
+		platform_shutdown()
 	}
 	if app.arena_ready {
 		virtual.arena_destroy(&app.storage)
@@ -104,18 +88,18 @@ destroy :: proc(app: ^UI) {
 begin_frame :: proc(app: ^UI) -> f64 {
 	app.frame += 1
 	for window in app.windows {
-		sync_window_scale(window)
+		sync_window_geometry(window)
 	}
 	clear(&app.events)
 	app.drag.started = NO_ELEMENT
 	app.drag.released = NO_ELEMENT
-	now := sdl3.GetTicksNS()
+	now := monotonic_ns()
 	dt := f64(now - app.previous) / 1_000_000_000
 	app.previous = now
 	return dt
 }
 
-// Owns storage, SDL, frame timing, dispatch, drawing, and cleanup. Application
+// Owns storage, platform initialization, frame timing, dispatch, drawing, and cleanup. Application
 // code creates elements and registers behavior; it never pumps the event loop.
 run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)) {
 	assert(owner != nil && create != nil)
@@ -127,11 +111,18 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 	defer virtual.arena_destroy(&storage)
 	context.allocator = virtual.arena_allocator(&storage)
 	ui: UI
-	if !init(&ui, config) {
+	initial := config
+	initial.flags += {.Hidden}
+	if !init(&ui, initial) {
 		return
 	}
 	defer destroy(&ui)
 	create(owner, &ui)
+	if ui.running && .Hidden not_in config.flags && !show_window(ui.window) {
+		fmt.eprintln("Cannot show primary window")
+		return
+	}
+	frame_deadline, previous_refresh: u64
 	for ui.running {
 		dt := begin_frame(&ui)
 		defer mem.free_all(context.temp_allocator)
@@ -159,26 +150,44 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 			}
 			i += 1
 		}
+		// Cursor and drawing share the hit against the final frame layout.
+		refresh_hover(&ui)
+		update_cursor(&ui)
+		presented, visible := false, false
+		refresh: u64
 		for window in ui.windows {
-			if flags, pending := window.requested_flags.?; pending {
-				window.requested_flags = nil
-				if !replace_window(window, flags) {
-					fmt.eprintln("Cannot replace window:", sdl3.GetError())
+			if platform_window_visible(window) {
+				visible = true
+				presented = present_window(window) || presented
+				if window.renderer.present_mode == .MAILBOX {
+					refresh = max(refresh, platform_window_refresh_rate(window))
+				}
+			}
+			if window.renderer.failed {
+				window.close_requested = true
+				if window == ui.window {
 					ui.running = false
-					break
 				}
 			}
 		}
 		if !ui.running {
 			break
 		}
-		// Cursor and drawing share the hit against the final frame layout.
-		refresh_hover(&ui)
-		update_cursor(&ui)
-		for window in ui.windows {
-			if .HIDDEN not_in sdl3.GetWindowFlags(window.handle) {
-				present_window(window)
+		if refresh > 0 {
+			// Mailbox replaces queued images without blocking the producer. Pace to
+			// the fastest visible mailbox surface instead of drawing unused frames.
+			interval := 1_000_000_000 / refresh
+			now := monotonic_ns()
+			if refresh != previous_refresh || frame_deadline + interval <= now {
+				frame_deadline = ui.previous
 			}
+			frame_deadline += interval
+			if frame_deadline > now {
+				platform_wait_frame(frame_deadline - now)
+			}
+		} else if !presented {
+			platform_wait_frame(visible ? 1_000_000 : 10_000_000)
 		}
+		previous_refresh = refresh
 	}
 }

@@ -3,8 +3,6 @@ package elements
 import "core:fmt"
 import "core:math"
 import fluid ".."
-import "vendor:sdl3"
-import ttf "vendor:sdl3/ttf"
 
 // Suggested content width for choice and number controls, including padding.
 // Applications still own pins and can constrain this width to their layout.
@@ -45,7 +43,7 @@ control_width :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> f32 {
 @(private="package")
 draw_control :: proc(view: fluid.Element_View) {
 	control := get_control(view.ui, view.id)
-	now := sdl3.GetTicksNS()
+	now := fluid.monotonic_ns()
 	switch &state in control.state {
 	case Choice_Control:
 		draw_choice(view, &state, now)
@@ -77,7 +75,7 @@ DEFAULT_FIELD_TEXT_STYLE :: Field_Text_Style{
 // Apply the shared field interaction animation to caller-provided styling.
 draw_field :: proc(view: fluid.Element_View, style: Field_Text_Style = DEFAULT_FIELD_TEXT_STYLE) {
 	control := get_control(view.ui, view.id)
-	frame := button_frame(view, &control.motion, false, sdl3.GetTicksNS())
+	frame := button_frame(view, &control.motion, false, fluid.monotonic_ns())
 	fluid.draw_element_surface(frame)
 	draw_field_text(frame, style)
 }
@@ -99,7 +97,7 @@ confirmation_progress :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> f32 {
 	control := get_control(ui, id)
 	assert(control != nil)
 	guard := &control.state.(Guard_Control)
-	return visible_guard_progress(guard, sdl3.GetTicksNS())
+	return visible_guard_progress(guard, fluid.monotonic_ns())
 }
 
 @(private="file")
@@ -140,17 +138,17 @@ visible_choice_slot :: proc(pins: fluid.Pins, choice: ^Choice_Control, slot: int
 }
 
 @(private="package")
-draw_guard :: proc(renderer: ^sdl3.Renderer, pixels: sdl3.FRect, radius: f32, guard: ^Guard_Control, now: u64) {
+draw_guard :: proc(renderer: ^fluid.Renderer, pixels: fluid.FRect, radius: f32, guard: ^Guard_Control, now: u64) {
 	progress := visible_guard_progress(guard, now)
 	if progress <= 0 {
 		return
 	}
 	fill := pixels
 	fill.w *= progress
-	clip := sdl3.Rect{i32(fill.x), i32(fill.y), i32(fill.w), i32(fill.h)}
-	_ = sdl3.SetRenderClipRect(renderer, &clip)
+	clip := fluid.IRect{i32(fill.x), i32(fill.y), i32(fill.w), i32(fill.h)}
+	previous_clip := fluid.render_clip(renderer, clip)
 	fluid.rounded_fill(renderer, pixels, radius, {238, 157, 133, 100})
-	_ = sdl3.SetRenderClipRect(renderer, nil)
+	fluid.restore_render_clip(renderer, previous_clip)
 }
 
 @(private="package")
@@ -194,7 +192,7 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u
 		if item.label == "" {
 			continue
 		}
-		text := fluid.cached_text(window, &item.text,
+		text := fluid.cached_text(&item.text,
 			fluid.text_font(window, element.text_size, element.text_weight), item.label)
 		tint := element.text_color
 		tint.a = u8(f32(tint.a) * text_alpha)
@@ -202,10 +200,10 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u
 			hover := tween_to(&item.hover_tint, over ? 1 : 0, now, 150_000_000)
 			draw_neighbor(window.renderer, text, pixels, tint, i == 0, hover, scale, offset)
 		} else {
-			clip := sdl3.Rect{i32(pixels.x), i32(pixels.y), i32(pixels.w), i32(pixels.h)}
-			_ = sdl3.SetRenderClipRect(window.renderer, &clip)
+			clip := fluid.IRect{i32(pixels.x), i32(pixels.y), i32(pixels.w), i32(pixels.h)}
+			previous_clip := fluid.render_clip(window.renderer, clip)
 			fluid.draw_label(window, text, fluid.translated(r, {offset, 0}), tint)
-			_ = sdl3.SetRenderClipRect(window.renderer, nil)
+			fluid.restore_render_clip(window.renderer, previous_clip)
 		}
 	}
 }
@@ -213,12 +211,12 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u
 // Adjacent choices are text aligned toward the current value. Clip the same
 // cached text into bands so it fades without painting over the backdrop.
 @(private="file")
-draw_neighbor :: proc(renderer: ^sdl3.Renderer, text: ^ttf.Text, slot: sdl3.FRect,
+draw_neighbor :: proc(renderer: ^fluid.Renderer, text: ^fluid.Text, slot: fluid.FRect,
 	color: fluid.Color, previous: bool, hover, scale, offset: f32,
 ) {
 	assert(text != nil)
-	w, h: i32
-	assert(ttf.GetTextSize(text, &w, &h))
+	size := fluid.text_dimensions(text)
+	w, h := size[0], size[1]
 	inset := 0.45 * scale
 	aligned_x := previous ? slot.x + slot.w - inset - f32(w) : slot.x + inset
 	x := math.round(aligned_x + offset * scale)
@@ -239,9 +237,9 @@ draw_neighbor :: proc(renderer: ^sdl3.Renderer, text: ^ttf.Text, slot: sdl3.FRec
 		}
 		tint := color
 		tint.a = u8(f32(color.a) * strength * (0.1 + 0.9 * toward_center))
-		clip := sdl3.Rect{left, i32(slot.y), right - left, i32(slot.h)}
-		_ = sdl3.SetRenderClipRect(renderer, &clip)
-		_ = fluid.paint_text(text, tint, x, y)
+		clip := fluid.IRect{left, i32(slot.y), right - left, i32(slot.h)}
+		previous_clip := fluid.render_clip(renderer, clip)
+		fluid.paint_text(renderer, text, tint, x, y)
+		fluid.restore_render_clip(renderer, previous_clip)
 	}
-	_ = sdl3.SetRenderClipRect(renderer, nil)
 }

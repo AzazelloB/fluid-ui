@@ -2,35 +2,26 @@
 
 ## Run on macOS
 
+Install Odin, the Vulkan loader, and MoltenVK. MoltenVK provides Vulkan over Metal.
+
 ```sh
-brew install odin sdl3 sdl3_ttf
+brew install odin vulkan-loader molten-vk
 odin run examples/showcase -minimum-os-version:11.0
-```
-
-The explicit deployment target prevents the linker from assigning a newer macOS requirement.
-
-If the linker cannot find the Homebrew libraries on Apple Silicon:
-
-```sh
-odin run examples/showcase -minimum-os-version:11.0 -extra-linker-flags:"-L/opt/homebrew/lib -Wl,-rpath,/opt/homebrew/lib"
 ```
 
 ## Run on Windows (x64)
 
-Install Visual Studio Build Tools with the **Desktop development with C++**
-workload and a Windows SDK. Add the directory containing `odin.exe` to your
-`PATH`. The build below uses [Odin dev-2026-11a for Windows x64](https://github.com/odin-lang/Odin/releases/tag/dev-2026-11a),
-which includes the SDL3 and SDL3_ttf bindings and DLLs.
-
-Run these commands from the repository root in PowerShell.
+Install [Odin dev-2026-11a or newer](https://odin-lang.org/docs/install/), Visual Studio Build Tools with
+**Desktop development with C++** and a Windows SDK, and a Vulkan-capable GPU
+driver. Add the directory containing `odin.exe` to your `PATH`.
 
 ```powershell
-$out = '.build\showcase-win-x64'
-$sdl = Join-Path (odin root) 'vendor\sdl3'
+$out = '.build\showcase-vulkan'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 odin build examples/showcase "-out:$out\showcase.exe" -o:speed -subsystem:windows
-Copy-Item -LiteralPath "$sdl\SDL3.dll", "$sdl\ttf\SDL3_ttf.dll" -Destination $out
 & "$out\showcase.exe"
 ```
 
-For an existing build, open `showcase.exe` with both DLLs in the same directory.
+The showcase uses the Vulkan loader installed by the graphics driver. Vulkan
+shaders are embedded in the build. Presentation uses mailbox when the surface
+offers it and falls back to FIFO otherwise.

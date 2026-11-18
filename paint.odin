@@ -1,17 +1,16 @@
 package fluid
 
 import "core:math"
-import "vendor:sdl3"
 
 // Draw a surface using physical pixels and caller-resolved colors.
-paint_surface :: proc(renderer: ^sdl3.Renderer, pixels: sdl3.FRect, fill, border_color: sdl3.Color,
+paint_surface :: proc(renderer: ^Renderer, pixels: FRect, fill, border_color: Color,
 	radius, border_width, shadow: f32, square_corners: bit_set[Corner] = {},
 ) {
 	if shadow > 0 {
 		// Low-opacity layers soften the silhouette without render targets.
 		for i := 8; i > 0; i -= 1 {
 			spread := f32(i) * shadow / 8
-			layer := sdl3.FRect{pixels.x - spread, pixels.y - spread + shadow * 0.4,
+			layer := FRect{pixels.x - spread, pixels.y - spread + shadow * 0.4,
 				pixels.w + spread * 2, pixels.h + spread * 2}
 			rounded_fill(renderer, layer, radius + spread, {0, 0, 0, 5}, square_corners)
 		}
@@ -19,7 +18,7 @@ paint_surface :: proc(renderer: ^sdl3.Renderer, pixels: sdl3.FRect, fill, border
 	border := min(border_width, min(pixels.w, pixels.h) / 2)
 	if border > 0 && border_color.a > 0 {
 		rounded_fill(renderer, pixels, radius, border_color, square_corners)
-		inner := sdl3.FRect{pixels.x + border, pixels.y + border, pixels.w - border * 2, pixels.h - border * 2}
+		inner := FRect{pixels.x + border, pixels.y + border, pixels.w - border * 2, pixels.h - border * 2}
 		rounded_fill(renderer, inner, max(f32(0), radius - border), fill, square_corners)
 	} else {
 		rounded_fill(renderer, pixels, radius, fill, square_corners)
@@ -28,7 +27,7 @@ paint_surface :: proc(renderer: ^sdl3.Renderer, pixels: sdl3.FRect, fill, border
 
 // Convex rounded silhouette with a one-physical-pixel alpha fringe. No shaders,
 // textures, or per-frame heap allocation; density scaling happens at the caller.
-rounded_fill :: proc(renderer: ^sdl3.Renderer, rect: sdl3.FRect, requested_radius: f32, color: sdl3.Color,
+rounded_fill :: proc(renderer: ^Renderer, rect: FRect, requested_radius: f32, color: Color,
 	square_corners: bit_set[Corner] = {},
 ) {
 	if rect.w <= 0 || rect.h <= 0 || color.a == 0 {
@@ -36,16 +35,14 @@ rounded_fill :: proc(renderer: ^sdl3.Renderer, rect: sdl3.FRect, requested_radiu
 	}
 	radius := clamp(requested_radius, 0, min(rect.w, rect.h) / 2)
 	if radius == 0 || square_corners == {.Top_Right, .Bottom_Right, .Bottom_Left, .Top_Left} {
-		sdl3.SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a)
-		pixels := rect
-		sdl3.RenderFillRect(renderer, &pixels)
+		render_fill_rect(renderer, rect, color)
 		return
 	}
 	STEPS :: 12
 	COUNT :: (STEPS + 1) * 4
-	vertices: [1 + COUNT * 2]sdl3.Vertex
+	vertices: [1 + COUNT * 2]Vertex
 	indices: [COUNT * 9]i32
-	c := sdl3.FColor{f32(color.r) / 255, f32(color.g) / 255, f32(color.b) / 255, f32(color.a) / 255}
+	c := [4]f32{f32(color.r) / 255, f32(color.g) / 255, f32(color.b) / 255, f32(color.a) / 255}
 	vertices[0] = {position = {rect.x + rect.w / 2, rect.y + rect.h / 2}, color = c}
 	centers := [4][2]f32{
 		{rect.x + rect.w - radius, rect.y + radius},
@@ -80,5 +77,5 @@ rounded_fill :: proc(renderer: ^sdl3.Renderer, rect: sdl3.FRect, requested_radiu
 			copy(indices[base:base + 9], triangle[:])
 		}
 	}
-	sdl3.RenderGeometry(renderer, nil, raw_data(vertices[:]), len(vertices), raw_data(indices[:]), len(indices))
+	render_geometry(renderer, vertices[:], indices[:])
 }

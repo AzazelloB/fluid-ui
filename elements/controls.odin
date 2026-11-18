@@ -6,8 +6,6 @@ import "core:fmt"
 import "core:math"
 import "core:os"
 import "core:strings"
-import "vendor:sdl3"
-import ttf "vendor:sdl3/ttf"
 
 // Callers apply proposed values with the corresponding setter. A string in a
 // change event is borrowed for the duration of the callback.
@@ -46,7 +44,7 @@ Choice_Control :: struct {
 @(private="package")
 Choice_Item :: struct {
 	label: string,
-	text: ^ttf.Text,
+	text: ^fluid.Text,
 	motion: Button_Motion,
 	hover_tint: Tween,
 }
@@ -88,7 +86,7 @@ Text_Control :: struct {
 Guard_Control :: struct {
 	progress, base: f64,
 	started_at, reset_at: u64,
-	key: sdl3.Keycode,
+	key: fluid.Key,
 	holding: bool,
 	fill: Tween,
 }
@@ -188,7 +186,7 @@ set_choice :: proc(ui: ^fluid.UI, id: fluid.Element_ID, selected: int) {
 show_choice :: proc(choice: ^Choice_Control, index: int) {
 	if choice.neighbors && index != choice.preview {
 		choice.slide_direction = index > choice.preview ? 1 : -1
-		choice.slide_started = sdl3.GetTicksNS()
+		choice.slide_started = fluid.monotonic_ns()
 	}
 	choice.preview = index
 }

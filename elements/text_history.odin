@@ -4,7 +4,6 @@ import fluid ".."
 
 import "core:os"
 import "core:strings"
-import "vendor:sdl3"
 
 @(private="package")
 Edit_Group :: enum {Separate, Typing, Backspace, Delete}
@@ -69,7 +68,7 @@ editor_snapshot :: proc(element: Control_View) -> Editor_Snapshot {
 record_editor_edit :: proc(ui: ^fluid.UI, id: fluid.Element_ID, next: Editor_Snapshot, group: Edit_Group) {
 	element := get_element(ui, id)
 	editor := editor_for(element.control)
-	now := sdl3.GetTicksNS()
+	now := fluid.monotonic_ns()
 	coalesce := group != .Separate && group == editor.history.last_group &&
 		now - editor.history.last_at < 750_000_000 && len(editor.history.undo) > 0
 	previous: Editor_Snapshot

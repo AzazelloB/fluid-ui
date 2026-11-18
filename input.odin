@@ -1,7 +1,5 @@
 package fluid
 
-import "vendor:sdl3"
-
 @(private="package")
 NO_ELEMENT :: Element_ID(-1)
 
@@ -41,11 +39,7 @@ hit_test :: proc(app: ^UI, window: ^Window, point: [2]f32) -> Element_ID {
 @(private="package")
 refresh_hover :: proc(app: ^UI) {
 	app.hovered = NO_ELEMENT
-	focus := sdl3.GetMouseFocus()
-	if focus == nil {
-		return
-	}
-	window := find_window(app, sdl3.GetWindowID(focus))
+	window := platform_mouse_window(app)
 	if window == nil {
 		return
 	}
@@ -57,8 +51,8 @@ refresh_hover :: proc(app: ^UI) {
 }
 
 @(private="package")
-press_at :: proc(app: ^UI, window: ^Window, event: sdl3.MouseButtonEvent) {
-	point := [2]f32{event.x, event.y} / window_scale(window)
+press_at :: proc(app: ^UI, window: ^Window, event: Platform_Event) {
+	point := event.position / window_scale(window)
 	id := hit_test(app, window, point)
 	focus_id := NO_ELEMENT
 	if id != NO_ELEMENT && can_focus(get_element(app, id)) {
@@ -75,7 +69,8 @@ press_at :: proc(app: ^UI, window: ^Window, event: sdl3.MouseButtonEvent) {
 		app.pressed = id
 	}
 	if send_element_event(app, id, Pointer_Event{
-		kind = .Down, point = point, timestamp = event.timestamp, clicks = event.clicks, inside = true,
+		kind = .Down, point = point, timestamp = event.timestamp, clicks = event.clicks,
+		modifiers = event.modifiers, inside = true,
 	}) || !is_active(app, id) {
 		return
 	}
@@ -89,103 +84,80 @@ press_at :: proc(app: ^UI, window: ^Window, event: sdl3.MouseButtonEvent) {
 		app.drag.started = id
 		app.drag.offset = point - [2]f32{r.left, r.top}
 		bring_to_front(app, id)
-		_ = sdl3.CaptureMouse(true)
+		platform_capture_mouse(window)
 	}
 }
 
 requests :: proc(app: ^UI) {
-	event: sdl3.Event
-	for sdl3.PollEvent(&event) {
-		#partial switch event.type {
-		case .QUIT:
+	for event, ok := platform_poll_event(app); ok; event, ok = platform_poll_event(app) {
+		window := event.window
+		if window == nil && event.kind != .Quit {
+			continue
+		}
+		switch event.kind {
+		case .Quit:
 			app.running = false
-		case .KEY_DOWN, .KEY_UP:
-			window := find_window(app, event.key.windowID)
-			if window != nil && !handle_key(app, window, event.key) &&
-			   event.type == .KEY_DOWN && event.key.key == sdl3.K_ESCAPE {
+		case .Key:
+			if !handle_key(app, window, event.key) && event.key.down && event.key.key == .Escape {
 				app.running = false
 			}
-		case .TEXT_EDITING, .TEXT_INPUT:
-			if event.type == .TEXT_EDITING {
-				if id := focused_in(app, find_window(app, event.edit.windowID)); id != NO_ELEMENT {
-					send_element_event(app, id, event.edit)
-				}
-			} else if id := focused_in(app, find_window(app, event.text.windowID)); id != NO_ELEMENT {
+		case .Text_Edit:
+			if id := focused_in(app, window); id != NO_ELEMENT {
+				send_element_event(app, id, event.edit)
+			}
+		case .Text_Input:
+			if id := focused_in(app, window); id != NO_ELEMENT {
 				send_element_event(app, id, event.text)
 			}
-		case .MOUSE_WHEEL:
-			if window := find_window(app, event.wheel.windowID); window != nil {
-				point := [2]f32{event.wheel.mouse_x, event.wheel.mouse_y} / window_scale(window)
-				if id := hit_test(app, window, point); id != NO_ELEMENT {
-					steps := event.wheel.direction == .FLIPPED ? -event.wheel.y : event.wheel.y
-					send_element_event(app, id, Wheel_Event(steps))
-				}
+		case .Wheel:
+			point := event.position / window_scale(window)
+			if id := hit_test(app, window, point); id != NO_ELEMENT {
+				send_element_event(app, id, Wheel_Event(event.wheel))
 			}
-		case .MOUSE_MOTION:
-			if window := find_window(app, event.motion.windowID); window != nil {
-				point := [2]f32{event.motion.x, event.motion.y} / window_scale(window)
-				deliver_pointer(app, window, point, event.motion.timestamp, false)
+		case .Mouse_Move:
+			deliver_pointer(app, window, event.position / window_scale(window), event.timestamp, false)
+		case .Mouse_Leave:
+			if app.captured == NO_ELEMENT && app.pressed != NO_ELEMENT && element_window(app, app.pressed) == window {
+				send_element_event(app, app.pressed, Pointer_Event{kind = .Cancel, timestamp = event.timestamp})
 			}
-		case .WINDOW_MOUSE_LEAVE:
-			if app.captured == NO_ELEMENT && app.pressed != NO_ELEMENT &&
-			   element_window(app, app.pressed) == find_window(app, event.window.windowID) {
-				send_element_event(app, app.pressed, Pointer_Event{kind = .Cancel, timestamp = event.window.timestamp})
-			}
-		case .MOUSE_BUTTON_DOWN:
-			window := find_window(app, event.button.windowID)
-			if window == nil || event.button.button != sdl3.BUTTON_LEFT {
-				continue
-			}
-			press_at(app, window, event.button)
-		case .MOUSE_BUTTON_UP:
-			if event.button.button == sdl3.BUTTON_LEFT {
-				window := find_window(app, event.button.windowID)
-				if window != nil {
-					point := [2]f32{event.button.x, event.button.y} / window_scale(window)
-					deliver_pointer(app, window, point, event.button.timestamp, true)
-					if app.drag.element != NO_ELEMENT {
-						move_drag(app, desktop_point(window, point))
-					}
-				} else if id := pointer_target(app); id != NO_ELEMENT {
-					cancel_pointer(app, id)
-				}
-				app.pressed = NO_ELEMENT
-				end_drag(app)
-			}
-		case .WINDOW_CLOSE_REQUESTED:
-			window := find_window(app, event.window.windowID)
-			if window != nil {
-				window.close_requested = true
-				if window == app.window {
-					app.running = false
-				}
-			}
-		case .WINDOW_RESIZED, .WINDOW_PIXEL_SIZE_CHANGED, .WINDOW_DISPLAY_SCALE_CHANGED:
-			window := find_window(app, event.window.windowID)
-			if window != nil {
-				sync_window_scale(window)
-				sync_viewport(window)
-			}
-		case .WINDOW_FOCUS_LOST:
-			window := find_window(app, event.window.windowID)
-			if id := pointer_target(app); id != NO_ELEMENT && element_window(app, id) == window {
-				cancel_pointer(app, id)
+		case .Mouse_Down:
+			press_at(app, window, event)
+		case .Mouse_Up:
+			point := event.position / window_scale(window)
+			deliver_pointer(app, window, point, event.timestamp, true)
+			if app.drag.element != NO_ELEMENT {
+				move_drag(app, desktop_point(window, point))
 			}
 			app.pressed = NO_ELEMENT
+			end_drag(app)
+		case .Close:
+			window.close_requested = true
+			if window == app.window {
+				app.running = false
+			}
+		case .Resize:
+			sync_window_geometry(window)
+		case .Focus_Lost:
+			if id := pointer_target(app); id != NO_ELEMENT && element_window(app, id) == window {
+				cancel_pointer(app, id)
+				app.pressed = NO_ELEMENT
+			}
 			if focused_in(app, window) != NO_ELEMENT {
 				blur(app)
 			}
 			// Cross-window drags continue until global button state reports release.
 		}
+		if !app.running {
+			break
+		}
 	}
 	if app.focused != NO_ELEMENT {
-		send_element_event(app, app.focused, Focused_Frame(sdl3.GetTicksNS()))
+		send_element_event(app, app.focused, Focused_Frame(monotonic_ns()))
 	}
 	if app.drag.element != NO_ELEMENT {
-		mouse: [2]f32
-		buttons := sdl3.GetGlobalMouseState(&mouse[0], &mouse[1])
+		mouse, left_down := platform_mouse_state()
 		move_drag(app, mouse / UI_UNIT_POINTS)
-		if .LEFT not_in buttons {
+		if !left_down {
 			end_drag(app)
 		}
 	}
@@ -206,7 +178,7 @@ end_drag :: proc(app: ^UI) {
 	}
 	app.drag.released = app.drag.element
 	app.drag.element = NO_ELEMENT
-	_ = sdl3.CaptureMouse(false)
+	platform_capture_mouse(nil)
 }
 
 dragging :: proc(app: ^UI, id: Element_ID) -> bool {
