@@ -1,5 +1,6 @@
 package fluid
 
+import "core:fmt"
 import "core:math"
 import "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
@@ -9,11 +10,18 @@ DEFAULT_TEXT_COLOR :: Color{230, 236, 244, 255}
 
 @(private="package")
 create_text_resources :: proc(window: ^Window_Resources) -> bool {
+	primary: cstring = "/System/Library/Fonts/SFNS.ttf"
+	fallback: cstring = "/System/Library/Fonts/Supplemental/Arial.ttf"
+	when ODIN_OS == .Windows {
+		system_root := sdl3.GetEnvironmentVariable(sdl3.GetEnvironment(), "SystemRoot")
+		primary = fmt.ctprintf("%s/Fonts/segoeui.ttf", system_root)
+		fallback = fmt.ctprintf("%s/Fonts/arial.ttf", system_root)
+	}
 	for size in Text_Size {
 		pixels := font_pixels(size, window.pixel_density)
-		font := ttf.OpenFont("/System/Library/Fonts/SFNS.ttf", pixels)
+		font := ttf.OpenFont(primary, pixels)
 		if font == nil {
-			font = ttf.OpenFont("/System/Library/Fonts/Supplemental/Arial.ttf", pixels)
+			font = ttf.OpenFont(fallback, pixels)
 		}
 		if font == nil {
 			return false
