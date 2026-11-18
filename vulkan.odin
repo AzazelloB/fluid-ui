@@ -24,7 +24,6 @@ Renderer :: struct {
 	vulkan: ^Vulkan,
 	surface: vk.SurfaceKHR,
 	transparent: bool,
-	fifo_reported: bool,
 	failed: bool,
 	swapchain: vk.SwapchainKHR,
 	images: []Swap_Image,
@@ -491,10 +490,6 @@ surface_present_mode :: proc(r: ^Renderer) -> (vk.PresentModeKHR, bool) {
 		if mode == .MAILBOX {
 			return mode, true
 		}
-	}
-	if !r.fifo_reported {
-		fmt.eprintln("Vulkan MAILBOX is unavailable for this window. Using FIFO presentation.")
-		r.fifo_reported = true
 	}
 	return .FIFO, true
 }
