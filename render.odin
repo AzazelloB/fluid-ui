@@ -17,6 +17,7 @@ Draw_Vertex :: struct {
 Draw_Batch :: struct {
 	clip: IRect,
 	first, count: u32,
+	shader: Shader_Draw,
 }
 
 // Intersect the current clip with a physical-pixel rectangle and return the
@@ -43,6 +44,23 @@ render_fill_rect :: proc(renderer: ^Renderer, rect: FRect, color: Color) {
 			{rect.x + rect.w, rect.y + rect.h}, {rect.x, rect.y + rect.h}}
 		render_quad(renderer, quad, render_color(color))
 	}
+}
+
+// Draw a fragment shader over a physical-pixel rectangle, in normal draw order.
+// Reuse the same immutable SPIR-V storage, typically from #load, for the UI session.
+render_shader :: proc(renderer: ^Renderer, rect: FRect, fragment: []u32, data: [4]f32 = {}) -> bool {
+	if !render_can_draw(renderer) || !(rect.w > 0 && rect.h > 0) {
+		return false
+	}
+	pipeline := shader_pipeline(renderer, fragment)
+	if pipeline == 0 {
+		return false
+	}
+	append(&renderer.batches, Draw_Batch{
+		clip = renderer.clip,
+		shader = {pipeline = pipeline, constants = {rect = {rect.x, rect.y, rect.w, rect.h}, data = data}},
+	})
+	return true
 }
 
 render_rect :: proc(renderer: ^Renderer, rect: FRect, color: Color) {
@@ -120,7 +138,7 @@ render_can_draw :: proc(renderer: ^Renderer) -> bool {
 render_batch :: proc(renderer: ^Renderer, count: int) {
 	if len(renderer.batches) > 0 {
 		last := &renderer.batches[len(renderer.batches) - 1]
-		if last.clip == renderer.clip {
+		if last.shader.pipeline == 0 && last.clip == renderer.clip {
 			last.count += u32(count)
 			return
 		}

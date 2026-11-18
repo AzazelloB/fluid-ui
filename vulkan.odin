@@ -31,6 +31,7 @@ Renderer :: struct {
 	format: vk.Format,
 	render_pass: vk.RenderPass,
 	pipeline: vk.Pipeline,
+	shader_pipelines: map[Shader_Code]vk.Pipeline,
 	present_mode: vk.PresentModeKHR,
 	extent: vk.Extent2D,
 	requested_size: [2]i32,
@@ -53,7 +54,29 @@ Frame_Constants :: struct {
 	circle_center: [2]f32,
 	circle_radius_squared: f32,
 	clip_enabled: u32,
+	_padding: [2]u32,
+	shader: Shader_Constants,
 }
+
+@(private="file")
+Shader_Code :: struct {
+	words: ^u32,
+	length: int,
+}
+
+@(private="package")
+Shader_Draw :: struct {
+	pipeline: vk.Pipeline,
+	constants: Shader_Constants,
+}
+
+@(private="package")
+Shader_Constants :: struct {
+	rect, data: [4]f32,
+}
+
+#assert(offset_of(Frame_Constants, shader) == 32)
+#assert(size_of(Frame_Constants) == 64)
 
 @(private="file")
 FRAMES_IN_FLIGHT :: 2
@@ -419,6 +442,11 @@ release_swapchain :: proc(r: ^Renderer) {
 @(private="file")
 release_pipeline :: proc(r: ^Renderer) {
 	device := r.vulkan.device
+	for _, pipeline in r.shader_pipelines {
+		vk.DestroyPipeline(device, pipeline, nil)
+	}
+	delete(r.shader_pipelines)
+	r.shader_pipelines = nil
 	vk.DestroyPipeline(device, r.pipeline, nil)
 	vk.DestroyRenderPass(device, r.render_pass, nil)
 	r.pipeline = 0
@@ -529,7 +557,7 @@ create_swapchain :: proc(r: ^Renderer, pixel_size: [2]i32) -> vk.Result {
 	}
 	if r.render_pass == 0 || r.format != format.format {
 		release_pipeline(r)
-		if !create_pipeline(r, format.format) {
+		if !create_ui_pipeline(r, format.format) {
 			return .ERROR_INITIALIZATION_FAILED
 		}
 		r.format = format.format
@@ -598,7 +626,7 @@ create_swapchain_images :: proc(r: ^Renderer, format: vk.Format) -> bool {
 }
 
 @(private="file")
-create_pipeline :: proc(r: ^Renderer, format: vk.Format) -> bool {
+create_ui_pipeline :: proc(r: ^Renderer, format: vk.Format) -> bool {
 	device := r.vulkan.device
 	attachment := vk.AttachmentDescription{
 		format = format, samples = {._1}, loadOp = .CLEAR, storeOp = .STORE,
@@ -617,18 +645,6 @@ create_pipeline :: proc(r: ^Renderer, format: vk.Format) -> bool {
 	if !vulkan_ok(vk.CreateRenderPass(device, &pass, nil, &r.render_pass), "create render pass") {
 		return false
 	}
-	// Rebuild each embedded module with glslang -V <source> -o <source>.spv.
-	vertex := load_shader(device, #load("shaders/ui.vert.spv", []u32))
-	fragment := load_shader(device, #load("shaders/ui.frag.spv", []u32))
-	defer vk.DestroyShaderModule(device, vertex, nil)
-	defer vk.DestroyShaderModule(device, fragment, nil)
-	if vertex == 0 || fragment == 0 {
-		return false
-	}
-	stages := [?]vk.PipelineShaderStageCreateInfo{
-		{sType = .PIPELINE_SHADER_STAGE_CREATE_INFO, stage = {.VERTEX}, module = vertex, pName = "main"},
-		{sType = .PIPELINE_SHADER_STAGE_CREATE_INFO, stage = {.FRAGMENT}, module = fragment, pName = "main"},
-	}
 	binding := vk.VertexInputBindingDescription{binding = 0, stride = size_of(Draw_Vertex), inputRate = .VERTEX}
 	attributes := [?]vk.VertexInputAttributeDescription{
 		{location = 0, format = .R32G32_SFLOAT, offset = u32(offset_of(Draw_Vertex, position))},
@@ -640,7 +656,47 @@ create_pipeline :: proc(r: ^Renderer, format: vk.Format) -> bool {
 		sType = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO, vertexBindingDescriptionCount = 1, pVertexBindingDescriptions = &binding,
 		vertexAttributeDescriptionCount = len(attributes), pVertexAttributeDescriptions = raw_data(attributes[:]),
 	}
-	assembly := vk.PipelineInputAssemblyStateCreateInfo{sType = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, topology = .TRIANGLE_LIST}
+	// Rebuild each embedded module with glslang -V <source> -o <source>.spv.
+	r.pipeline = create_graphics_pipeline(r, #load("shaders/ui.vert.spv", []u32), #load("shaders/ui.frag.spv", []u32),
+		&inputs, .TRIANGLE_LIST)
+	return r.pipeline != 0
+}
+
+@(private="package")
+shader_pipeline :: proc(r: ^Renderer, fragment: []u32) -> vk.Pipeline {
+	if len(fragment) < 5 || fragment[0] != 0x07230203 {
+		return 0
+	}
+	key := Shader_Code{&fragment[0], len(fragment)}
+	if pipeline, cached := r.shader_pipelines[key]; cached {
+		return pipeline
+	}
+	if r.shader_pipelines == nil {
+		r.shader_pipelines = make(map[Shader_Code]vk.Pipeline, runtime.heap_allocator())
+	}
+	inputs := vk.PipelineVertexInputStateCreateInfo{sType = .PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO}
+	pipeline := create_graphics_pipeline(r, #load("shaders/shader.vert.spv", []u32), fragment, &inputs, .TRIANGLE_STRIP)
+	r.shader_pipelines[key] = pipeline
+	return pipeline
+}
+
+@(private="file")
+create_graphics_pipeline :: proc(r: ^Renderer, vertex_code, fragment_code: []u32,
+	inputs: ^vk.PipelineVertexInputStateCreateInfo, topology: vk.PrimitiveTopology,
+) -> vk.Pipeline {
+	device := r.vulkan.device
+	vertex := load_shader(device, vertex_code)
+	fragment := load_shader(device, fragment_code)
+	defer vk.DestroyShaderModule(device, vertex, nil)
+	defer vk.DestroyShaderModule(device, fragment, nil)
+	if vertex == 0 || fragment == 0 {
+		return 0
+	}
+	stages := [?]vk.PipelineShaderStageCreateInfo{
+		{sType = .PIPELINE_SHADER_STAGE_CREATE_INFO, stage = {.VERTEX}, module = vertex, pName = "main"},
+		{sType = .PIPELINE_SHADER_STAGE_CREATE_INFO, stage = {.FRAGMENT}, module = fragment, pName = "main"},
+	}
+	assembly := vk.PipelineInputAssemblyStateCreateInfo{sType = .PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, topology = topology}
 	viewport := vk.PipelineViewportStateCreateInfo{sType = .PIPELINE_VIEWPORT_STATE_CREATE_INFO, viewportCount = 1, scissorCount = 1}
 	raster := vk.PipelineRasterizationStateCreateInfo{sType = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO, polygonMode = .FILL, lineWidth = 1}
 	samples := vk.PipelineMultisampleStateCreateInfo{sType = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO, rasterizationSamples = {._1}}
@@ -656,11 +712,16 @@ create_pipeline :: proc(r: ^Renderer, format: vk.Format) -> bool {
 	blend_state := vk.PipelineColorBlendStateCreateInfo{sType = .PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, attachmentCount = 1, pAttachments = &blend}
 	info := vk.GraphicsPipelineCreateInfo{
 		sType = .GRAPHICS_PIPELINE_CREATE_INFO, stageCount = len(stages), pStages = raw_data(stages[:]),
-		pVertexInputState = &inputs, pInputAssemblyState = &assembly, pViewportState = &viewport,
+		pVertexInputState = inputs, pInputAssemblyState = &assembly, pViewportState = &viewport,
 		pRasterizationState = &raster, pMultisampleState = &samples, pColorBlendState = &blend_state, pDynamicState = &dynamic_state,
 		layout = r.vulkan.pipeline_layout, renderPass = r.render_pass, basePipelineIndex = -1,
 	}
-	return vulkan_ok(vk.CreateGraphicsPipelines(device, 0, 1, &info, nil, &r.pipeline), "create UI graphics pipeline")
+	pipeline: vk.Pipeline
+	if !vulkan_ok(vk.CreateGraphicsPipelines(device, 0, 1, &info, nil, &pipeline), "create graphics pipeline") {
+		vk.DestroyPipeline(device, pipeline, nil)
+		return 0
+	}
+	return pipeline
 }
 
 @(private="file")
@@ -669,7 +730,9 @@ load_shader :: proc(device: vk.Device, words: []u32) -> vk.ShaderModule {
 		sType = .SHADER_MODULE_CREATE_INFO, codeSize = len(words) * size_of(u32), pCode = raw_data(words),
 	}
 	module: vk.ShaderModule
-	vulkan_ok(vk.CreateShaderModule(device, &info, nil, &module), "load shader")
+	if !vulkan_ok(vk.CreateShaderModule(device, &info, nil, &module), "load shader") {
+		return 0
+	}
 	return module
 }
 
@@ -877,7 +940,7 @@ record_frame :: proc(r: ^Renderer, frame: ^Render_Frame, framebuffer: vk.Framebu
 		renderArea = {extent = r.extent}, clearValueCount = 1, pClearValues = &clear_value,
 	}
 	vk.CmdBeginRenderPass(command, &pass, .INLINE)
-	if len(r.indices) > 0 {
+	if len(r.batches) > 0 {
 		w, h := f32(r.extent.width), f32(r.extent.height)
 		viewport := vk.Viewport{width = w, height = h, maxDepth = 1}
 		params := Frame_Constants{scale = {2 / w, 2 / h}}
@@ -888,17 +951,30 @@ record_frame :: proc(r: ^Renderer, frame: ^Render_Frame, framebuffer: vk.Framebu
 		}
 		layout := r.vulkan.pipeline_layout
 		vk.CmdSetViewport(command, 0, 1, &viewport)
-		vk.CmdBindPipeline(command, .GRAPHICS, r.pipeline)
 		vk.CmdPushConstants(command, layout, {.VERTEX, .FRAGMENT}, 0, size_of(params), &params)
-		vk.CmdBindDescriptorSets(command, .GRAPHICS, layout, 0, 1, &frame.descriptor, 0, nil)
-		start: vk.DeviceSize
-		vk.CmdBindVertexBuffers(command, 0, 1, &frame.geometry.handle, &start)
-		vk.CmdBindIndexBuffer(command, frame.geometry.handle, vk.DeviceSize(len(r.vertices) * size_of(Draw_Vertex)), .UINT32)
-		for batch in r.batches {
+		if len(r.indices) > 0 {
+			vk.CmdBindDescriptorSets(command, .GRAPHICS, layout, 0, 1, &frame.descriptor, 0, nil)
+			start: vk.DeviceSize
+			vk.CmdBindVertexBuffers(command, 0, 1, &frame.geometry.handle, &start)
+			vk.CmdBindIndexBuffer(command, frame.geometry.handle, vk.DeviceSize(len(r.vertices) * size_of(Draw_Vertex)), .UINT32)
+		}
+		bound: vk.Pipeline
+		for &batch in r.batches {
+			pipeline := batch.shader.pipeline != 0 ? batch.shader.pipeline : r.pipeline
+			if pipeline != bound {
+				vk.CmdBindPipeline(command, .GRAPHICS, pipeline)
+				bound = pipeline
+			}
 			rect := batch.clip
 			scissor := vk.Rect2D{offset = {rect.x, rect.y}, extent = {u32(rect.w), u32(rect.h)}}
 			vk.CmdSetScissor(command, 0, 1, &scissor)
-			vk.CmdDrawIndexed(command, batch.count, 1, batch.first, 0, 0)
+			if batch.shader.pipeline != 0 {
+				vk.CmdPushConstants(command, layout, {.VERTEX, .FRAGMENT}, u32(offset_of(Frame_Constants, shader)),
+					size_of(Shader_Constants), &batch.shader.constants)
+				vk.CmdDraw(command, 4, 1, 0, 0)
+			} else {
+				vk.CmdDrawIndexed(command, batch.count, 1, batch.first, 0, 0)
+			}
 		}
 	}
 	vk.CmdEndRenderPass(command)

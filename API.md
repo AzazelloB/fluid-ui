@@ -25,6 +25,37 @@ content with app-specified placeholder, selection, and caret colors. Custom choi
 `elements.choice_slot`, including drag previews. Custom confirmation drawing
 can read `elements.confirmation_progress` for the animated fill.
 
+## Fragment shaders
+
+Call `render_shader` from a drawing callback to fill a physical-pixel `FRect`
+with an application fragment shader. Use `pixel_rect(view.pins,
+pixel_scale(view.window))` to convert element bounds. Shader draws follow normal
+draw order, `render_clip`, and any active window clip.
+
+Include `shaders/fluid.frag.glsl` and implement `shade`. `uv` runs from the
+upper-left `(0, 0)` to the lower-right `(1, 1)` of the original rectangle,
+`size` gives its physical-pixel dimensions, and `data` carries four floats
+supplied by the caller. Return straight RGBA. Fluid handles premultiplication.
+
+```glsl
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "fluid.frag.glsl"
+
+vec4 shade(vec2 uv, vec2 size, vec4 data) {
+    return vec4(uv, data.x, 1.0);
+}
+```
+
+Compile the Bamboo Forest shader from the repository root with
+`glslang -V -Ishaders examples/showcase/shaders/bamboo.frag -o examples/showcase/shaders/bamboo.frag.spv`.
+Embed the compiled module with `#load("path/to/file.frag.spv", []u32)` and
+pass it to `render_shader(renderer, pixels, fragment, data)`. Use trusted
+application shaders and keep the SPIR-V storage immutable for the UI session.
+Each window caches its Vulkan pipeline for that storage. The call returns
+`false` if drawing is unavailable or pipeline creation fails, so the callback
+can draw a fallback.
+
 # Units and geometry
 
 All public lengths are plain `f32` values in UI units. One UI unit equals

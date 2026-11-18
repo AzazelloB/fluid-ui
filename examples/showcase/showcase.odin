@@ -13,6 +13,7 @@ Showcase :: struct {
 	catalog:       Catalog,
 	controls:      Controls,
 	logs:          Logs,
+	bamboo:        Bamboo,
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
@@ -24,6 +25,7 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 		{title = "Catalog", create = create_catalog, leave = leave_catalog},
 		{title = "Controls", create = create_controls},
 		{title = "Logs", create = create_logs},
+		{title = "Bamboo Forest", create = create_bamboo},
 	}
 	fluid.create_pages(&app.pages, ui, app, definitions[:])
 	start_launch_reveal(&app.launch, ui.window)
