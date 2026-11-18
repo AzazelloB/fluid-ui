@@ -860,20 +860,17 @@ win_custom_hit :: proc(window: ^Window, lparam: win.LPARAM) -> win.LRESULT {
 	if window.platform.clip_frame_style != nil {
 		return win.HTCLIENT
 	}
-	screen_point := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
-	point := screen_point
-	win.ScreenToClient(handle, &point)
-	hit, over_element := window_hit_at(window, {f32(point.x), f32(point.y)})
-	if hit == .Maximize {
-		return win.HTMAXBUTTON
-	}
-	if hit == .Client && over_element {
-		return win.HTCLIENT
-	}
+	point := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
+	// The outer resize frame takes precedence over the caption buttons.
 	if !win.IsZoomed(handle) {
-		if edge := win_resize_hit(handle, screen_point); edge != win.HTCLIENT {
+		if edge := win_resize_hit(handle, point); edge != win.HTCLIENT {
 			return edge
 		}
+	}
+	win.ScreenToClient(handle, &point)
+	hit := window_hit_at(window, {f32(point.x), f32(point.y)})
+	if hit == .Maximize {
+		return win.HTMAXBUTTON
 	}
 	return hit == .Drag ? win.HTCAPTION : win.HTCLIENT
 }

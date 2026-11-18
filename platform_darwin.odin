@@ -39,6 +39,7 @@ Platform_Window :: struct {
 	clip_active: bool,
 	live_resize_timer: objc.id,
 	zoom_pending: bool,
+	title_bar_down: ^AppKit.Event,
 }
 
 @(objc_class="NSObject", private="file")
@@ -252,6 +253,7 @@ platform_destroy_window :: proc(window: ^Window) {
 		return
 	}
 	mac_stop_live_resize(window)
+	mac_clear_title_bar_press(window)
 	mac_send(nil, mac_receiver(handle), "setDelegate:", objc.id(nil))
 	mac_send(nil, mac_receiver(handle), "close")
 	mac_send(nil, mac_receiver(window.platform.marked), "release")
@@ -480,8 +482,9 @@ mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) -> bool {
 		inside := point.x >= 0 && point.y >= 0 && point.x < bounds.size.width && point.y <= bounds.size.height
 		#partial switch kind {
 		case .LeftMouseDown:
+			mac_clear_title_bar_press(window)
 			if !inside { return false }
-			if hit, _ := window_hit_at(window, event.position); hit == .Drag {
+			if window_hit_at(window, event.position) == .Drag {
 				mac_title_bar_press(window, native_event)
 				return true
 			}
@@ -489,8 +492,20 @@ mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) -> bool {
 			event.modifiers = mac_modifiers(mac_send(AppKit.EventModifierFlags, mac_receiver(native_event), "modifierFlags"))
 			event.clicks = u8(clamp(mac_send(NS.Integer, mac_receiver(native_event), "clickCount"), 1, 255))
 		case .LeftMouseUp:
+			if window.platform.title_bar_down != nil {
+				mac_clear_title_bar_press(window)
+				return true
+			}
 			event.kind = .Mouse_Up
-		case .MouseMoved, .LeftMouseDragged:
+		case .LeftMouseDragged:
+			if down := window.platform.title_bar_down; down != nil {
+				window.platform.title_bar_down = nil
+				defer mac_send(nil, mac_receiver(down), "release")
+				mac_send(nil, mac_receiver(window.platform.handle), "performWindowDragWithEvent:", down)
+				return true
+			}
+			event.kind = .Mouse_Move
+		case .MouseMoved:
 			event.kind = .Mouse_Move
 		case .ScrollWheel:
 			if !inside { return false }
@@ -519,7 +534,8 @@ mac_title_bar_press :: proc(window: ^Window, event: ^AppKit.Event) {
 		mac_send(nil, handle, "makeKeyAndOrderFront:", objc.id(nil))
 	}
 	if mac_send(NS.Integer, mac_receiver(event), "clickCount") != 2 {
-		mac_send(nil, handle, "performWindowDragWithEvent:", event)
+		// Wait for movement before handing AppKit the original mouse-down event.
+		window.platform.title_bar_down = mac_send(^AppKit.Event, mac_receiver(event), "retain")
 		return
 	}
 	defaults := mac_send(objc.id, mac_receiver(objc_getClass("NSUserDefaults")), "standardUserDefaults")
@@ -531,6 +547,14 @@ mac_title_bar_press :: proc(window: ^Window, event: ^AppKit.Event) {
 	case "None":
 	case "Minimize": _ = window_action(window, .Minimize)
 	case "", "Maximize", "Zoom", "Fill": _ = window_action(window, .Toggle_Maximize)
+	}
+}
+
+@(private="file")
+mac_clear_title_bar_press :: proc(window: ^Window) {
+	if down := window.platform.title_bar_down; down != nil {
+		window.platform.title_bar_down = nil
+		mac_send(nil, mac_receiver(down), "release")
 	}
 }
 
@@ -864,6 +888,7 @@ mac_live_resize_tick :: proc "c" (view: objc.id, cmd: objc.SEL, timer: objc.id) 
 mac_window_resigned_key :: proc "c" (view: objc.id, cmd: objc.SEL, note: objc.id) {
 	context = runtime.default_context()
 	if window := mac_window_from_view(view); window != nil {
+		mac_clear_title_bar_press(window)
 		append(&mac_events, Platform_Event{kind = .Focus_Lost, window = window, timestamp = monotonic_ns()})
 	}
 }

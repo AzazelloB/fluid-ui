@@ -181,14 +181,14 @@ set_window_hit :: proc(ui: ^UI, id: Element_ID, hit: Window_Hit) {
 }
 
 @(private="package")
-window_hit_at :: proc(window: ^Window, native_point: [2]f32) -> (Window_Hit, bool) {
+window_hit_at :: proc(window: ^Window, native_point: [2]f32) -> Window_Hit {
 	if !window.custom_title_bar || !window.open || window.clip != nil {
-		return .Client, false
+		return .Client
 	}
 	if id := hit_test(window.ui, window, native_point / window_scale(window)); id != NO_ELEMENT {
-		return get_element(window.ui, id).window_hit, true
+		return get_element(window.ui, id).window_hit
 	}
-	return .Client, false
+	return .Client
 }
 
 // Physical renderer pixels per UI unit.
