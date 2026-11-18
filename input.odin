@@ -89,7 +89,16 @@ press_at :: proc(app: ^UI, window: ^Window, event: Platform_Event) {
 }
 
 requests :: proc(app: ^UI) {
-	for event, ok := platform_poll_event(app); ok; event, ok = platform_poll_event(app) {
+	dispatch_requests(app, true)
+}
+
+@(private="package")
+dispatch_requests :: proc(app: ^UI, poll_native: bool) {
+	for app.running {
+		event, ok := poll_frame_event(app, poll_native)
+		if !ok || !app.running {
+			break
+		}
 		window := event.window
 		if window == nil && event.kind != .Quit {
 			continue
@@ -149,9 +158,9 @@ requests :: proc(app: ^UI) {
 			}
 			// Cross-window drags continue until global button state reports release.
 		}
-		if !app.running {
-			break
-		}
+	}
+	if !app.running {
+		return
 	}
 	if app.focused != NO_ELEMENT {
 		send_element_event(app, app.focused, Focused_Frame(monotonic_ns()))

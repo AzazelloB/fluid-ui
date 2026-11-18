@@ -20,6 +20,7 @@ Platform_Window :: struct {
 	clicks:       u8,
 	click_time:   u64,
 	click_point:  win.POINT,
+	live_resize_interval: u64,
 }
 
 @(private="package")
@@ -91,6 +92,8 @@ foreign window_user {
 Win_Input_Message_Source :: struct {device, origin: u32}
 @(private="file")
 WIN_INPUT_TOUCHPAD :: 0x10
+@(private="file")
+WIN_LIVE_RESIZE_TIMER :: 1
 
 @(default_calling_convention="system", private="file")
 foreign clipboard_kernel {
@@ -184,6 +187,9 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 platform_destroy_window :: proc(window: ^Window) {
 	if window.platform.handle == nil {
 		return
+	}
+	if window.platform.live_resize_interval != 0 {
+		win.KillTimer(window.platform.handle, WIN_LIVE_RESIZE_TIMER)
 	}
 	win.SetWindowLongPtrW(window.platform.handle, win.GWLP_USERDATA, 0)
 	win.DestroyWindow(window.platform.handle)
@@ -290,7 +296,7 @@ platform_window_refresh_rate :: proc(window: ^Window) -> u64 {
 }
 
 @(private="package")
-platform_poll_event :: proc(app: ^UI) -> (Platform_Event, bool) {
+platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
 	for {
 		if win_event_index < len(win_events) {
 			event := win_events[win_event_index]
@@ -299,6 +305,9 @@ platform_poll_event :: proc(app: ^UI) -> (Platform_Event, bool) {
 		}
 		clear(&win_events)
 		win_event_index = 0
+		if !poll_native || !app.running {
+			return {}, false
+		}
 		msg: win.MSG
 		if !win.PeekMessageW(&msg, nil, 0, 0, win.PM_REMOVE) {
 			return {}, false
@@ -627,6 +636,21 @@ win_window_proc :: proc "system" (
 	case win.WM_ERASEBKGND:
 		// Vulkan clears the client area.
 		return 1
+	case win.WM_ENTERSIZEMOVE:
+		interval_ms := max(1, 1_000 / platform_window_refresh_rate(window))
+		window.platform.live_resize_interval = interval_ms * 1_000_000
+		win.SetTimer(handle, WIN_LIVE_RESIZE_TIMER, win.UINT(interval_ms), nil)
+		return 0
+	case win.WM_EXITSIZEMOVE:
+		window.platform.live_resize_interval = 0
+		win.KillTimer(handle, WIN_LIVE_RESIZE_TIMER)
+		return 0
+	case win.WM_TIMER:
+		if wparam == WIN_LIVE_RESIZE_TIMER && window.platform.live_resize_interval != 0 {
+			live_resize_frame(window, window.platform.live_resize_interval)
+			return 0
+		}
+		return win.DefWindowProcW(handle, message, wparam, lparam)
 	case win.WM_SIZE:
 		event.kind = .Resize
 	case win.WM_DISPLAYCHANGE:
@@ -721,6 +745,10 @@ win_window_proc :: proc "system" (
 		return win.DefWindowProcW(handle, message, wparam, lparam)
 	}
 	append(&win_events, event)
+	if message == win.WM_SIZE && window.platform.live_resize_interval != 0 {
+		// Timer messages can be delayed while the pointer keeps moving.
+		live_resize_frame(window, window.platform.live_resize_interval)
+	}
 	return 0
 }
 

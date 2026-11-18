@@ -1,5 +1,6 @@
 package fluid
 
+import "base:runtime"
 import "core:fmt"
 import "core:mem"
 import virtual "core:mem/virtual"
@@ -21,6 +22,8 @@ UI :: struct {
 	active:                            [dynamic]Element_ID, // Draw order and processing membership.
 	events:                            [dynamic]Element_ID, // Mouse-down presses in the current frame.
 	storage:                           virtual.Arena,
+	live_frame_storage:                ^virtual.Arena,
+	event_context:                     ^runtime.Context,
 	previous:                          u64,
 	frame:                             u64,
 	platform_ready, arena_ready:       bool,
@@ -84,8 +87,8 @@ destroy :: proc(app: ^UI) {
 	app^ = {}
 }
 
-@(private="package")
-begin_frame :: proc(app: ^UI) -> f64 {
+@(private="file")
+begin_frame :: proc(app: ^UI) {
 	app.frame += 1
 	for window in app.windows {
 		sync_window_geometry(window)
@@ -93,10 +96,87 @@ begin_frame :: proc(app: ^UI) -> f64 {
 	clear(&app.events)
 	app.drag.started = NO_ELEMENT
 	app.drag.released = NO_ELEMENT
+}
+
+@(private="package")
+poll_frame_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
+	if !poll_native || app.live_frame_storage == nil {
+		return platform_poll_event(app, poll_native)
+	}
+	event_context := context
+	app.event_context = &event_context
+	defer app.event_context = nil
+	return platform_poll_event(app, true)
+}
+
+@(private="package")
+live_resize_frame :: proc(window: ^Window, interval: u64 = 0) {
+	app := window.ui
+	event_context := app.event_context
+	if event_context == nil || !app.running || !window.open || monotonic_ns() - app.previous < interval {
+		return
+	}
+	// The native pump is suspended. Finish its pending frame using only queued events.
+	app.event_context = nil
+	defer app.event_context = event_context
+	context = event_context^
+	// Native callbacks can still enqueue text in the outer frame's temporary storage.
+	context.temp_allocator = virtual.arena_allocator(app.live_frame_storage)
+	defer virtual.arena_free_all(app.live_frame_storage)
+	dispatch_requests(app, false)
+	finish_frame(app)
+	if app.running {
+		begin_frame(app)
+	}
+}
+
+@(private="file")
+finish_frame :: proc(app: ^UI) -> (presented, visible: bool, refresh: u64) {
+	if !app.running {
+		return
+	}
 	now := monotonic_ns()
 	dt := f64(now - app.previous) / 1_000_000_000
 	app.previous = now
-	return dt
+	advance_window_effects(app, dt)
+	if !app.running {
+		return
+	}
+	advance_animations(app, dt)
+	// Behavior sees hover before its own layout changes.
+	refresh_hover(app)
+	dispatch_behavior(app, dt)
+	if !app.running {
+		return
+	}
+	// Behavior gets the first chance to transfer elements out of closing windows.
+	for i := 0; i < len(app.windows); {
+		window := app.windows[i]
+		if window.close_requested {
+			close_window(window)
+			continue
+		}
+		i += 1
+	}
+	// Cursor and drawing share the hit against the final frame layout.
+	refresh_hover(app)
+	update_cursor(app)
+	for window in app.windows {
+		if platform_window_visible(window) {
+			visible = true
+			presented = present_window(window) || presented
+			if window.renderer.present_mode == .MAILBOX {
+				refresh = max(refresh, platform_window_refresh_rate(window))
+			}
+		}
+		if window.renderer.failed {
+			window.close_requested = true
+			if window == app.window {
+				app.running = false
+			}
+		}
+	}
+	return
 }
 
 // Owns storage, platform initialization, frame timing, dispatch, drawing, and cleanup. Application
@@ -117,6 +197,13 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 		return
 	}
 	defer destroy(&ui)
+	live_frame_storage: virtual.Arena
+	if err := virtual.arena_init_growing(&live_frame_storage); err != nil {
+		fmt.eprintln("Cannot initialize live resize frame storage:", err)
+		return
+	}
+	defer virtual.arena_destroy(&live_frame_storage)
+	ui.live_frame_storage = &live_frame_storage
 	create(owner, &ui)
 	if ui.running && .Hidden not_in config.flags && !show_window(ui.window) {
 		fmt.eprintln("Cannot show primary window")
@@ -124,52 +211,10 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 	}
 	frame_deadline, previous_refresh: u64
 	for ui.running {
-		dt := begin_frame(&ui)
+		begin_frame(&ui)
 		defer mem.free_all(context.temp_allocator)
 		requests(&ui)
-		if !ui.running {
-			break
-		}
-		advance_window_effects(&ui, dt)
-		if !ui.running {
-			break
-		}
-		advance_animations(&ui, dt)
-		// Behavior sees hover before its own layout changes.
-		refresh_hover(&ui)
-		dispatch_behavior(&ui, dt)
-		if !ui.running {
-			break
-		}
-		// Behavior gets the first chance to transfer elements out of closing windows.
-		for i := 0; i < len(ui.windows); {
-			window := ui.windows[i]
-			if window.close_requested {
-				close_window(window)
-				continue
-			}
-			i += 1
-		}
-		// Cursor and drawing share the hit against the final frame layout.
-		refresh_hover(&ui)
-		update_cursor(&ui)
-		presented, visible := false, false
-		refresh: u64
-		for window in ui.windows {
-			if platform_window_visible(window) {
-				visible = true
-				presented = present_window(window) || presented
-				if window.renderer.present_mode == .MAILBOX {
-					refresh = max(refresh, platform_window_refresh_rate(window))
-				}
-			}
-			if window.renderer.failed {
-				window.close_requested = true
-				if window == ui.window {
-					ui.running = false
-				}
-			}
-		}
+		presented, visible, refresh := finish_frame(&ui)
 		if !ui.running {
 			break
 		}

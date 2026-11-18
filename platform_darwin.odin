@@ -21,6 +21,7 @@ Platform_Window :: struct {
 	marked:     ^NS.String,
 	selection:  NS.Range,
 	clip_active: bool,
+	live_resize_timer: objc.id,
 }
 
 @(objc_class="NSObject", private="file")
@@ -119,6 +120,9 @@ mac_register_classes :: proc() -> bool {
 	mac_method(view, "mouseExited:", cast(objc.IMP)mac_mouse_exited, "v@:@")
 	mac_method(view, "windowShouldClose:", cast(objc.IMP)mac_window_should_close, "B@:@")
 	mac_method(view, "windowDidResize:", cast(objc.IMP)mac_window_resized, "v@:@")
+	mac_method(view, "windowWillStartLiveResize:", cast(objc.IMP)mac_window_live_resize_started, "v@:@")
+	mac_method(view, "windowDidEndLiveResize:", cast(objc.IMP)mac_window_live_resize_ended, "v@:@")
+	mac_method(view, "fluidLiveResizeTick:", cast(objc.IMP)mac_live_resize_tick, "v@:@")
 	mac_method(view, "windowDidChangeBackingProperties:", cast(objc.IMP)mac_window_resized, "v@:@")
 	mac_method(view, "windowDidResignKey:", cast(objc.IMP)mac_window_resigned_key, "v@:@")
 	mac_method(view, "insertText:replacementRange:", cast(objc.IMP)mac_insert_text, "v@:@{_NSRange=QQ}")
@@ -224,6 +228,7 @@ platform_destroy_window :: proc(window: ^Window) {
 	if handle == nil {
 		return
 	}
+	mac_stop_live_resize(window)
 	mac_send(nil, mac_receiver(handle), "setDelegate:", objc.id(nil))
 	mac_send(nil, mac_receiver(handle), "close")
 	mac_send(nil, mac_receiver(window.platform.marked), "release")
@@ -350,7 +355,7 @@ mac_resize_layer :: proc(window: ^Window) {
 }
 
 @(private="package")
-platform_poll_event :: proc(app: ^UI) -> (Platform_Event, bool) {
+platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
 	pool := NS.scoped_autoreleasepool()
 	defer pool->drain()
 	for {
@@ -361,6 +366,9 @@ platform_poll_event :: proc(app: ^UI) -> (Platform_Event, bool) {
 		}
 		clear(&mac_events)
 		mac_event_index = 0
+		if !poll_native || !app.running {
+			return {}, false
+		}
 		event := mac_application->nextEventMatchingMask(transmute(AppKit.EventMask)~u64(0),
 			NS.Date.distantPast(), NS.DefaultRunLoopMode, bool(true))
 		if event == nil {
@@ -701,6 +709,48 @@ mac_window_resized :: proc "c" (view: objc.id, cmd: objc.SEL, note: objc.id) {
 	if window := mac_window_from_view(view); window != nil {
 		mac_resize_layer(window)
 		append(&mac_events, Platform_Event{kind = .Resize, window = window, timestamp = monotonic_ns()})
+	}
+}
+
+@(private="file")
+mac_window_live_resize_started :: proc "c" (view: objc.id, cmd: objc.SEL, note: objc.id) {
+	context = runtime.default_context()
+	window := mac_window_from_view(view)
+	if window == nil || window.platform.live_resize_timer != nil {
+		return
+	}
+	interval := 1 / f64(platform_window_refresh_rate(window))
+	timer := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSTimer")),
+		"timerWithTimeInterval:target:selector:userInfo:repeats:", interval, view,
+		objc.sel_registerName("fluidLiveResizeTick:"), objc.id(nil), bool(true))
+	window.platform.live_resize_timer = timer
+	loop := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSRunLoop")), "mainRunLoop")
+	mac_send(nil, mac_receiver(loop), "addTimer:forMode:", timer, NS.RunLoopCommonModes)
+}
+
+@(private="file")
+mac_window_live_resize_ended :: proc "c" (view: objc.id, cmd: objc.SEL, note: objc.id) {
+	context = runtime.default_context()
+	if window := mac_window_from_view(view); window != nil {
+		mac_stop_live_resize(window)
+	}
+}
+
+@(private="file")
+mac_stop_live_resize :: proc(window: ^Window) {
+	if timer := window.platform.live_resize_timer; timer != nil {
+		window.platform.live_resize_timer = nil
+		mac_send(nil, mac_receiver(timer), "invalidate")
+	}
+}
+
+@(private="file")
+mac_live_resize_tick :: proc "c" (view: objc.id, cmd: objc.SEL, timer: objc.id) {
+	context = runtime.default_context()
+	if window := mac_window_from_view(view); window != nil && timer == window.platform.live_resize_timer {
+		pool := NS.scoped_autoreleasepool()
+		defer pool->drain()
+		live_resize_frame(window)
 	}
 }
 

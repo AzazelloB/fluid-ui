@@ -80,7 +80,8 @@ sidebar := elements.panel(scene, {
 There are no layout callbacks, stored expressions, or implicit references.
 Changing `viewport` afterward does not change `sidebar`. To respond to resizing
 or another element moving, calculate new values and send them again. Each demo
-owns that work in its ordinary update handler.
+owns that work in its ordinary update handler. `fluid.run` keeps calling update
+and drawing callbacks while a window is being resized on Windows and macOS.
 
 `Pins` contains `left`, `top`, `right`, and `bottom`. Those are coordinates, not
 width/height. Fixed size is ordinary math: `right = left + width`. Centering and
