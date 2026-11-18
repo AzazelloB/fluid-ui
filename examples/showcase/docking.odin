@@ -57,8 +57,10 @@ fill_floating_window :: proc(page: ^Docking, ui: ^fluid.UI) {
 
 move_floating_window :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) -> bool {
 	// Use desktop coordinates and the original grab point, never a position delta.
-	position := fluid.window_position(ui.window) + mouse - page.grab
-	if !fluid.set_window_position(page.floating_scene.window, position) {
+	window := page.floating_scene.window
+	grab := page.grab * (fluid.window_scale(window) / fluid.UI_UNIT_POINTS)
+	position := fluid.desktop_point(ui.window, mouse) - grab
+	if !fluid.set_window_position(window, position) {
 		fmt.eprintln(sdl3.GetError())
 		return false
 	}
@@ -180,7 +182,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		mouse := fluid.pointer_position(owner)
 		page.docked = nil
 		elements.set_choice(ui, page.placement, 0)
-		page.drag_origin = fluid.window_position(owner) + mouse
+		page.drag_origin = fluid.desktop_point(owner, mouse)
 		page.drag_moved = false
 		page.detach_failed = false
 		// Keep the same relative grab point as the docked shape contracts.
@@ -204,7 +206,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 	}
 	defer if dropped { fluid.deactivate(page.targets) }
 	mouse := fluid.pointer_position(ui.window)
-	delta := fluid.window_position(ui.window) + mouse - page.drag_origin
+	delta := mouse - fluid.window_point(ui.window, page.drag_origin)
 	page.drag_moved = page.drag_moved || delta[0] * delta[0] + delta[1] * delta[1] > 0.0625
 	card_is_floating := page.floating_scene != nil && fluid.element_window(ui, page.card) == page.floating_scene.window
 	if page.drag_moved && card_is_floating && fluid.contains(fluid.bounds(ui, page.area), mouse) {

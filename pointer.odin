@@ -59,7 +59,7 @@ deliver_pointer :: proc(ui: ^UI, window: ^Window, point: [2]f32, timestamp: u64,
 		inside = owner == window && hit_test(ui, window, point) == id,
 	}
 	if owner != window {
-		event.point += window_position(window) - window_position(owner)
+		event.point = window_point(owner, desktop_point(window, point))
 	}
 	if !up || pointer_captured(ui, id) {
 		send_element_event(ui, id, event)

@@ -98,12 +98,15 @@ Set `Style.hover_border` to draw a different border color while hovered.
 ## Windows
 
 Bounds and pointer coordinates are window-local.
-`transfer` preserves the element ID and animation progress, translating its
-pins and animation origin to preserve desktop position.
+`transfer` preserves the element ID, animation progress, and size in UI units.
+It rebases the element and animation origins to preserve their desktop positions.
 
-Use `window_position`, `pointer_position`, `set_window_position`, and
-`set_window_size` for UI units. Multiply UI units by `pixel_scale(window)`
-when drawing directly into an SDL renderer.
+`pointer_position`, `set_window_size`, and window configuration use UI units
+scaled for the window's display. `window_position` and `set_window_position`
+use shared desktop coordinates, expressed in SDL desktop units divided by
+`UI_UNIT_POINTS`. Use `desktop_point` and `window_point` to convert between
+these spaces. Multiply UI units by `window_scale(window)` for native SDL
+window coordinates or by `pixel_scale(window)` for SDL renderer pixels.
 
 ## Direct controls
 

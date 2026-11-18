@@ -1,6 +1,7 @@
 package fluid
 
 import "core:fmt"
+import "core:math"
 import virtual "core:mem/virtual"
 import "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
@@ -22,11 +23,13 @@ Window :: struct {
 // These resources can be replaced while the logical window stays in place.
 @(private="package")
 Window_Resources :: struct {
-	handle:        ^sdl3.Window,
-	renderer:      ^sdl3.Renderer,
-	fonts:         [Text_Weight][Text_Size]^ttf.Font,
-	text_engine:   ^ttf.TextEngine,
-	pixel_density: f32,
+	handle:           ^sdl3.Window,
+	renderer:         ^sdl3.Renderer,
+	fonts:            [Text_Weight][Text_Size]^ttf.Font,
+	text_engine:      ^ttf.TextEngine,
+	display_scale:    f32,
+	coordinate_scale: f32,
+	minimum_size:     [2]f32,
 }
 
 create_window :: proc(app: ^UI, config: Config) -> ^Window {
@@ -52,13 +55,14 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 		return nil
 	}
 	window.viewport = register_element(app, Element{space = window})
+	sync_window_scale(window)
 	sync_viewport(window)
 	append(&app.windows, window)
 	return window
 }
 
 @(private="package")
-create_window_resources :: proc(window: ^Window_Resources, config: Config) -> bool {
+create_window_resources :: proc(window: ^Window_Resources, config: Config, placement: Maybe(sdl3.Rect) = nil) -> bool {
 	success := false
 	defer {
 		if !success {
@@ -66,12 +70,32 @@ create_window_resources :: proc(window: ^Window_Resources, config: Config) -> bo
 			release_window_resources(window)
 		}
 	}
-	window.handle = sdl3.CreateWindow(config.title, i32(config.size[0] * UI_UNIT_POINTS), i32(config.size[1] * UI_UNIT_POINTS), config.flags | {.RESIZABLE, .HIGH_PIXEL_DENSITY})
+	initial_size := native_window_size(config.size, 1)
+	if rect, placed := placement.?; placed {
+		initial_size = {rect.w, rect.h}
+	}
+	window.handle = sdl3.CreateWindow(config.title, initial_size[0], initial_size[1], config.flags | {.RESIZABLE, .HIGH_PIXEL_DENSITY, .HIDDEN})
 	if window.handle == nil {
 		return false
 	}
-	if !sdl3.SetWindowMinimumSize(window.handle, max(i32(1), i32(config.minimum_size[0] * UI_UNIT_POINTS)), max(i32(1), i32(config.minimum_size[1] * UI_UNIT_POINTS))) {
+	if rect, placed := placement.?; placed && !sdl3.SetWindowPosition(window.handle, rect.x, rect.y) {
 		return false
+	}
+	window.display_scale, window.coordinate_scale = window_scales(window.handle)
+	window.minimum_size = config.minimum_size
+	if !apply_window_minimum_size(window) {
+		return false
+	}
+	if placement == nil {
+		size := native_window_size(config.size, window.coordinate_scale)
+		if size != initial_size {
+			display := sdl3.GetDisplayForWindow(window.handle)
+			center := sdl3.WINDOWPOS_CENTERED_DISPLAY(i32(display))
+			if !sdl3.SetWindowSize(window.handle, size[0], size[1]) ||
+				!sdl3.SetWindowPosition(window.handle, center, center) {
+				return false
+			}
+		}
 	}
 	window.renderer = sdl3.CreateRenderer(window.handle, nil)
 	if window.renderer == nil {
@@ -81,8 +105,7 @@ create_window_resources :: proc(window: ^Window_Resources, config: Config) -> bo
 	if !sdl3.SetRenderVSync(window.renderer, 1) {
 		return false
 	}
-	window.pixel_density = max(f32(1), sdl3.GetWindowPixelDensity(window.handle))
-	if !create_text_resources(window) {
+	if !create_text_resources(window) || (.HIDDEN not_in config.flags && !sdl3.ShowWindow(window.handle)) {
 		return false
 	}
 	success = true
@@ -93,22 +116,19 @@ create_window_resources :: proc(window: ^Window_Resources, config: Config) -> bo
 // or viewport ID. Call between frames; renderer-specific text is rebuilt.
 @(private="package")
 replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
-	config := Config{title = sdl3.GetWindowTitle(window.handle), flags = flags | {.HIDDEN}}
-	position, size, minimum: [2]i32
-	if !sdl3.GetWindowSize(window.handle, &size[0], &size[1]) ||
-		!sdl3.GetWindowMinimumSize(window.handle, &minimum[0], &minimum[1]) ||
-		!sdl3.GetWindowPosition(window.handle, &position[0], &position[1]) {
+	config := Config{
+		title = sdl3.GetWindowTitle(window.handle),
+		flags = flags | {.HIDDEN},
+		minimum_size = window.minimum_size,
+	}
+	placement: sdl3.Rect
+	if !sdl3.GetWindowSize(window.handle, &placement.w, &placement.h) ||
+		!sdl3.GetWindowPosition(window.handle, &placement.x, &placement.y) {
 		return false
 	}
-	config.size = {f32(size[0]) / UI_UNIT_POINTS, f32(size[1]) / UI_UNIT_POINTS}
-	config.minimum_size = {f32(minimum[0]) / UI_UNIT_POINTS, f32(minimum[1]) / UI_UNIT_POINTS}
 
 	replacement: Window_Resources
-	if !create_window_resources(&replacement, config) {
-		return false
-	}
-	if !sdl3.SetWindowPosition(replacement.handle, position[0], position[1]) {
-		release_window_resources(&replacement)
+	if !create_window_resources(&replacement, config, placement) {
 		return false
 	}
 	app := window.ui
@@ -121,13 +141,15 @@ replace_window :: proc(window: ^Window, flags: sdl3.WindowFlags) -> bool {
 	release_window_text(window)
 	previous := window.native
 	window.native = replacement
-	sync_text_density(window)
+	sync_window_scale(window)
+	sync_viewport(window)
 	if .HIDDEN in sdl3.GetWindowFlags(previous.handle) {
 		present_window(window)
 	} else if !show_window(window) {
 		release_window_text(window)
 		release_window_resources(&window.native)
 		window.native = previous
+		sync_viewport(window)
 		return false
 	}
 	// Present again after showing: some backends skip hidden-window presentation.
@@ -179,13 +201,17 @@ window_position :: proc(window: ^Window) -> [2]f32 {
 pointer_position :: proc(window: ^Window) -> [2]f32 {
 	mouse: [2]f32
 	_ = sdl3.GetGlobalMouseState(&mouse[0], &mouse[1])
-	return mouse / UI_UNIT_POINTS - window_position(window)
+	return window_point(window, mouse / UI_UNIT_POINTS)
 }
 
 show_window :: proc(window: ^Window) -> bool {
 	// Prime hidden content before making the window visible.
 	present_window(window)
-	return sdl3.ShowWindow(window.handle)
+	if !sdl3.ShowWindow(window.handle) {
+		return false
+	}
+	sync_window_scale(window)
+	return true
 }
 
 @(private="package")
@@ -216,25 +242,88 @@ set_window_flags :: proc(window: ^Window, flags: sdl3.WindowFlags) {
 	window.requested_flags = flags
 }
 
-// Renderer coordinates are physical pixels, including on high-density displays.
+// Physical renderer pixels per UI unit.
 pixel_scale :: proc(window: ^Window) -> f32 {
-	return window.pixel_density * UI_UNIT_POINTS
+	return window.display_scale * UI_UNIT_POINTS
 }
 
-// Native placement and size requests share the same UI units as layout/input.
+// Native SDL window coordinates per UI unit.
+window_scale :: proc(window: ^Window) -> f32 {
+	return window.coordinate_scale * UI_UNIT_POINTS
+}
+
+// Convert between window-local UI units and shared desktop coordinates.
+desktop_point :: proc(window: ^Window, point: [2]f32) -> [2]f32 {
+	return window_position(window) + point * window.coordinate_scale
+}
+
+window_point :: proc(window: ^Window, point: [2]f32) -> [2]f32 {
+	return (point - window_position(window)) / window.coordinate_scale
+}
+
 set_window_position :: proc(window: ^Window, position: [2]f32) -> bool {
-	return sdl3.SetWindowPosition(window.handle, i32(position[0] * UI_UNIT_POINTS), i32(position[1] * UI_UNIT_POINTS))
+	if !sdl3.SetWindowPosition(window.handle, i32(position[0] * UI_UNIT_POINTS), i32(position[1] * UI_UNIT_POINTS)) {
+		return false
+	}
+	sync_window_scale(window)
+	return true
 }
 
 set_window_size :: proc(window: ^Window, size: [2]f32) -> bool {
-	if !sdl3.SetWindowSize(window.handle, i32(size[0] * UI_UNIT_POINTS), i32(size[1] * UI_UNIT_POINTS)) { return false }
+	native_size := native_window_size(size, window.coordinate_scale)
+	if !sdl3.SetWindowSize(window.handle, native_size[0], native_size[1]) {
+		return false
+	}
+	sync_window_scale(window)
 	sync_viewport(window)
 	return true
+}
+
+@(private="file")
+native_window_size :: proc(size: [2]f32, coordinate_scale: f32) -> [2]i32 {
+	scale := coordinate_scale * UI_UNIT_POINTS
+	return {i32(math.round(size[0] * scale)), i32(math.round(size[1] * scale))}
+}
+
+@(private="file")
+window_scales :: proc(handle: ^sdl3.Window) -> (display_scale, coordinate_scale: f32) {
+	density := sdl3.GetWindowPixelDensity(handle)
+	if density <= 0 {
+		density = 1
+	}
+	display_scale = sdl3.GetWindowDisplayScale(handle)
+	if display_scale <= 0 {
+		display_scale = density
+	}
+	return display_scale, display_scale / density
+}
+
+@(private="file")
+apply_window_minimum_size :: proc(window: ^Window_Resources) -> bool {
+	size := native_window_size(window.minimum_size, window.coordinate_scale)
+	return sdl3.SetWindowMinimumSize(window.handle, max(i32(1), size[0]), max(i32(1), size[1]))
+}
+
+@(private="package")
+sync_window_scale :: proc(window: ^Window) {
+	display_scale, coordinate_scale := window_scales(window.handle)
+	if display_scale != window.display_scale {
+		window.display_scale = display_scale
+		resize_fonts(window)
+	}
+	if coordinate_scale != window.coordinate_scale {
+		window.coordinate_scale = coordinate_scale
+		if !apply_window_minimum_size(&window.native) {
+			fmt.eprintln("Cannot update window minimum size:", sdl3.GetError())
+		}
+		sync_viewport(window)
+	}
 }
 
 @(private="package")
 sync_viewport :: proc(window: ^Window) {
 	w, h: i32
 	assert(sdl3.GetWindowSize(window.handle, &w, &h))
-	get_element(window.ui, window.viewport).pins = Pins{right = f32(w) / UI_UNIT_POINTS, bottom = f32(h) / UI_UNIT_POINTS}
+	scale := window_scale(window)
+	get_element(window.ui, window.viewport).pins = Pins{right = f32(w) / scale, bottom = f32(h) / scale}
 }

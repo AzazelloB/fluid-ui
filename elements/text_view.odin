@@ -225,7 +225,7 @@ draw_editor :: proc(element: Control_View, editor: ^Editor, style: Field_Text_St
 		x := min(view.x + view.caret.rect.x, view.clip.x + view.clip.w - 1)
 		_ = sdl3.SetRenderDrawColor(renderer, style.caret.r, style.caret.g, style.caret.b, style.caret.a)
 		_ = sdl3.RenderLine(renderer, f32(x), f32(y), f32(x), f32(y + view.caret.rect.h - 1))
-		scale := fluid.pixel_scale(window) / fluid.UI_UNIT_POINTS
+		scale := fluid.pixel_scale(window) / fluid.window_scale(window)
 		area := sdl3.Rect{i32(f32(x) / scale), i32(f32(y) / scale), 1, i32(f32(view.caret.rect.h) / scale)}
 		_ = sdl3.SetTextInputArea(window.handle, &area, 0)
 	}

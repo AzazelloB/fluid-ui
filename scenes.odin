@@ -53,9 +53,8 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
 		return
 	}
 	if source.window != destination.window {
-		offset := window_position(source.window) - window_position(destination.window)
-		element.pins = translated(element.pins, offset)
-		element.motion.from = translated(element.motion.from, offset)
+		element.pins = transfer_pins(source.window, destination.window, element.pins)
+		element.motion.from = transfer_pins(source.window, destination.window, element.motion.from)
 		detach_input(app, id)
 		release_element_text(element)
 	}
@@ -67,6 +66,12 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Scene) {
 	} else if !source.active && destination.active {
 		append(&app.active, id)
 	}
+}
+
+@(private="file")
+transfer_pins :: proc(source, destination: ^Window, pins: Pins) -> Pins {
+	origin := [2]f32{pins.left, pins.top}
+	return translated(pins, window_point(destination, desktop_point(source, origin)) - origin)
 }
 
 is_active :: proc(app: ^UI, id: Element_ID) -> bool {

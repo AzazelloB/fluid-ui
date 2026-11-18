@@ -103,9 +103,8 @@ destroy :: proc(app: ^UI) {
 @(private="package")
 begin_frame :: proc(app: ^UI) -> f64 {
 	app.frame += 1
-	// Process window events before starting work on any window's drawable.
 	for window in app.windows {
-		sync_text_density(window)
+		sync_window_scale(window)
 	}
 	clear(&app.events)
 	app.drag.started = NO_ELEMENT

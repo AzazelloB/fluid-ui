@@ -58,7 +58,7 @@ refresh_hover :: proc(app: ^UI) {
 
 @(private="package")
 press_at :: proc(app: ^UI, window: ^Window, event: sdl3.MouseButtonEvent) {
-	point := [2]f32{event.x, event.y} / UI_UNIT_POINTS
+	point := [2]f32{event.x, event.y} / window_scale(window)
 	id := hit_test(app, window, point)
 	focus_id := NO_ELEMENT
 	if id != NO_ELEMENT && can_focus(get_element(app, id)) {
@@ -115,7 +115,7 @@ requests :: proc(app: ^UI) {
 			}
 		case .MOUSE_WHEEL:
 			if window := find_window(app, event.wheel.windowID); window != nil {
-				point := [2]f32{event.wheel.mouse_x, event.wheel.mouse_y} / UI_UNIT_POINTS
+				point := [2]f32{event.wheel.mouse_x, event.wheel.mouse_y} / window_scale(window)
 				if id := hit_test(app, window, point); id != NO_ELEMENT {
 					steps := event.wheel.direction == .FLIPPED ? -event.wheel.y : event.wheel.y
 					send_element_event(app, id, Wheel_Event(steps))
@@ -123,7 +123,7 @@ requests :: proc(app: ^UI) {
 			}
 		case .MOUSE_MOTION:
 			if window := find_window(app, event.motion.windowID); window != nil {
-				point := [2]f32{event.motion.x, event.motion.y} / UI_UNIT_POINTS
+				point := [2]f32{event.motion.x, event.motion.y} / window_scale(window)
 				deliver_pointer(app, window, point, event.motion.timestamp, false)
 			}
 		case .WINDOW_MOUSE_LEAVE:
@@ -141,10 +141,10 @@ requests :: proc(app: ^UI) {
 			if event.button.button == sdl3.BUTTON_LEFT {
 				window := find_window(app, event.button.windowID)
 				if window != nil {
-					point := [2]f32{event.button.x, event.button.y} / UI_UNIT_POINTS
+					point := [2]f32{event.button.x, event.button.y} / window_scale(window)
 					deliver_pointer(app, window, point, event.button.timestamp, true)
 					if app.drag.element != NO_ELEMENT {
-						move_drag(app, window_position(window) + point)
+						move_drag(app, desktop_point(window, point))
 					}
 				} else if id := pointer_target(app); id != NO_ELEMENT {
 					cancel_pointer(app, id)
@@ -160,14 +160,10 @@ requests :: proc(app: ^UI) {
 					app.running = false
 				}
 			}
-		case .WINDOW_PIXEL_SIZE_CHANGED, .WINDOW_DISPLAY_SCALE_CHANGED:
+		case .WINDOW_RESIZED, .WINDOW_PIXEL_SIZE_CHANGED, .WINDOW_DISPLAY_SCALE_CHANGED:
 			window := find_window(app, event.window.windowID)
 			if window != nil {
-				sync_text_density(window)
-			}
-		case .WINDOW_RESIZED:
-			window := find_window(app, event.window.windowID)
-			if window != nil {
+				sync_window_scale(window)
 				sync_viewport(window)
 			}
 		case .WINDOW_FOCUS_LOST:
@@ -198,7 +194,7 @@ requests :: proc(app: ^UI) {
 @(private="package")
 move_drag :: proc(app: ^UI, global_mouse: [2]f32) {
 	id := app.drag.element
-	mouse := global_mouse - window_position(element_window(app, id))
+	mouse := window_point(element_window(app, id), global_mouse)
 	r := bounds(app, id)
 	set_layout(app, id, translated(r, mouse - app.drag.offset - [2]f32{r.left, r.top}))
 }

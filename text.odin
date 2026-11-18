@@ -18,7 +18,7 @@ create_text_resources :: proc(window: ^Window_Resources) -> bool {
 		fallback = fmt.ctprintf("%s/Fonts/arial.ttf", system_root)
 	}
 	for size in Text_Size {
-		pixels := font_pixels(size, window.pixel_density)
+		pixels := font_pixels(size, window.display_scale)
 		font := ttf.OpenFont(primary, pixels)
 		if font == nil {
 			font = ttf.OpenFont(fallback, pixels)
@@ -53,22 +53,16 @@ release_text_resources :: proc(window: ^Window_Resources) {
 }
 
 @(private="file")
-font_pixels :: proc(size: Text_Size, density: f32) -> f32 {
-	return text_size_units(size) * UI_UNIT_POINTS * density
+font_pixels :: proc(size: Text_Size, display_scale: f32) -> f32 {
+	return text_size_units(size) * UI_UNIT_POINTS * display_scale
 }
 
-// Layout and measurements stay in font-relative UI units. Only the SDL
-// boundary works in logical points or physical pixels.
 @(private="package")
-sync_text_density :: proc(window: ^Window) {
-	density := max(f32(1), sdl3.GetWindowPixelDensity(window.handle))
-	if density != window.pixel_density {
-		for weight in Text_Weight {
-			for size in Text_Size {
-				assert(ttf.SetFontSize(window.fonts[weight][size], font_pixels(size, density)))
-			}
+	resize_fonts :: proc(window: ^Window) {
+	for weight in Text_Weight {
+		for size in Text_Size {
+			assert(ttf.SetFontSize(window.fonts[weight][size], font_pixels(size, window.display_scale)))
 		}
-		window.pixel_density = density
 	}
 }
 
