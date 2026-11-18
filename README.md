@@ -2,7 +2,9 @@
 
 ## Run on macOS
 
-Install Odin, the Vulkan loader, and MoltenVK. MoltenVK provides Vulkan over Metal.
+Install Odin dev-2026-11a or newer, the Vulkan loader, and MoltenVK. MoltenVK
+provides Vulkan over Metal. If Odin is already installed through Homebrew,
+`brew upgrade odin` updates it.
 
 ```sh
 brew install odin vulkan-loader molten-vk

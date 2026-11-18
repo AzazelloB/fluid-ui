@@ -54,8 +54,8 @@ mac_event_index: int
 
 @(private="package")
 platform_init :: proc() -> bool {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	// The scoped helper drains the pool at scope exit.
+	NS.scoped_autoreleasepool()
 	if !mac_register_classes() {
 		return false
 	}
@@ -158,8 +158,7 @@ mac_method :: proc(class: objc.Class, name: cstring, method: objc.IMP, encoding:
 
 @(private="package")
 platform_create_window :: proc(window: ^Window, config: Config) -> bool {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	style: AppKit.WindowStyleMask = {.Titled, .Closable, .Miniaturizable, .Resizable}
 	class := objc.objc_getClass("NSWindow")
 	if .Borderless in config.flags {
@@ -222,8 +221,7 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 
 @(private="package")
 platform_destroy_window :: proc(window: ^Window) {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	handle := window.platform.handle
 	if handle == nil {
 		return
@@ -244,8 +242,7 @@ platform_destroy_window :: proc(window: ^Window) {
 
 @(private="package")
 platform_show_window :: proc(window: ^Window, show: bool) -> bool {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	handle := window.platform.handle
 	if show {
 		if window.ui.drag.element != NO_ELEMENT {
@@ -284,16 +281,14 @@ mac_content_rect :: proc "contextless" (window: ^Window) -> NS.Rect {
 
 @(private="package")
 platform_window_position :: proc(window: ^Window) -> [2]f32 {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	content := mac_content_rect(window)
 	return {f32(content.origin.x), f32(mac_desktop_top() - content.origin.y - content.size.height)}
 }
 
 @(private="package")
 platform_set_window_position :: proc(window: ^Window, position: [2]i32) -> bool {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	handle := window.platform.handle
 	frame := mac_send(NS.Rect, mac_receiver(handle), "frame")
 	content := mac_content_rect(window)
@@ -314,8 +309,7 @@ platform_window_size :: proc(window: ^Window) -> [2]i32 {
 
 @(private="package")
 platform_set_window_size :: proc(window: ^Window, size: [2]i32) -> bool {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	value := NS.Size{f64(max(1, size[0])), f64(max(1, size[1]))}
 	mac_send(nil, mac_receiver(window.platform.handle), "setContentSize:", value)
 	mac_resize_layer(window)
@@ -329,8 +323,7 @@ platform_window_scales :: proc(window: ^Window) -> (f32, f32) {
 
 @(private="package")
 platform_window_refresh_rate :: proc(window: ^Window) -> u64 {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	screen := mac_send(^AppKit.Screen, mac_receiver(window.platform.handle), "screen")
 	selector := objc.sel_registerName("maximumFramesPerSecond")
 	if mac_send(bool, mac_receiver(screen), "respondsToSelector:", selector) {
@@ -356,8 +349,7 @@ mac_resize_layer :: proc(window: ^Window) {
 
 @(private="package")
 platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	for {
 		if mac_event_index < len(mac_events) {
 			event := mac_events[mac_event_index]
@@ -439,8 +431,7 @@ mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) {
 
 @(private="package")
 platform_mouse_window :: proc(app: ^UI) -> ^Window {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	mouse := mac_send(NS.Point, mac_receiver(objc.objc_getClass("NSEvent")), "mouseLocation")
 	number := mac_send(NS.Integer, mac_receiver(objc.objc_getClass("NSWindow")), "windowNumberAtPoint:belowWindowWithWindowNumber:",
 		mouse, NS.Integer(0))
@@ -454,8 +445,7 @@ platform_mouse_window :: proc(app: ^UI) -> ^Window {
 
 @(private="package")
 platform_mouse_state :: proc() -> ([2]f32, bool) {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	class := objc.objc_getClass("NSEvent")
 	mouse := mac_send(NS.Point, mac_receiver(class), "mouseLocation")
 	buttons := mac_send(NS.UInteger, mac_receiver(class), "pressedMouseButtons")
@@ -559,8 +549,7 @@ platform_text_input :: proc(window: ^Window, enabled: bool) {
 
 @(private="package")
 platform_clear_composition :: proc(window: ^Window) {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	input := mac_send(objc.id, mac_receiver(window.platform.view), "inputContext")
 	mac_send(nil, mac_receiver(input), "discardMarkedText")
 	mac_clear_marked(window)
@@ -572,16 +561,14 @@ platform_text_input_area :: proc(window: ^Window, area: [4]i32) {
 		return
 	}
 	window.platform.ime_area = area
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	input := mac_send(objc.id, mac_receiver(window.platform.view), "inputContext")
 	mac_send(nil, mac_receiver(input), "invalidateCharacterCoordinates")
 }
 
 @(private="package")
 platform_clipboard_set :: proc(window: ^Window, value: string) -> bool {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	board := AppKit.Pasteboard.generalPasteboard()
 	str := mac_string(value)
 	defer mac_send(nil, mac_receiver(str), "release")
@@ -591,8 +578,7 @@ platform_clipboard_set :: proc(window: ^Window, value: string) -> bool {
 
 @(private="package")
 platform_clipboard_get :: proc(window: ^Window) -> string {
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	board := AppKit.Pasteboard.generalPasteboard()
 	str := board->stringForType(AppKit.PasteboardTypeString)
 	return mac_copy_text(str)
@@ -619,8 +605,7 @@ platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) 
 		return true
 	}
 	window.platform.clip_active = clipped
-	pool := NS.scoped_autoreleasepool()
-	defer pool->drain()
+	NS.scoped_autoreleasepool()
 	handle := mac_receiver(window.platform.handle)
 	style := mac_send(AppKit.WindowStyleMask, handle, "styleMask")
 	if .Titled in style {
@@ -748,8 +733,7 @@ mac_stop_live_resize :: proc(window: ^Window) {
 mac_live_resize_tick :: proc "c" (view: objc.id, cmd: objc.SEL, timer: objc.id) {
 	context = runtime.default_context()
 	if window := mac_window_from_view(view); window != nil && timer == window.platform.live_resize_timer {
-		pool := NS.scoped_autoreleasepool()
-		defer pool->drain()
+		NS.scoped_autoreleasepool()
 		live_resize_frame(window)
 	}
 }
