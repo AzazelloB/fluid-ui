@@ -4,7 +4,6 @@ package fluid
 import "base:intrinsics"
 import "base:runtime"
 import "core:strings"
-import "core:time"
 import NS "core:sys/darwin/Foundation"
 import objc "core:sys/darwin/ObjectiveC"
 import AppKit "vendor:darwin/AppKit"
@@ -412,7 +411,7 @@ mac_resize_layer :: proc(window: ^Window) {
 }
 
 @(private="package")
-platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
+platform_poll_event :: proc(app: ^UI, poll_native: bool, deadline: u64) -> (Platform_Event, bool) {
 	NS.scoped_autoreleasepool()
 	poll: for {
 		if mac_event_index < len(mac_events) {
@@ -435,8 +434,13 @@ platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, boo
 				continue poll
 			}
 		}
-		event := mac_application->nextEventMatchingMask(transmute(AppKit.EventMask)~u64(0),
-			NS.Date.distantPast(), NS.DefaultRunLoopMode, bool(true))
+		until := NS.Date.distantPast()
+		now := monotonic_ns()
+		if deadline > now {
+			// Keep AppKit servicing input and window updates between frames.
+			until = NS.Date.dateWithTimeIntervalSinceNow(NS.TimeInterval(f64(deadline - now) / 1_000_000_000))
+		}
+		event := mac_application->nextEventMatchingMask(transmute(AppKit.EventMask)~u64(0), until, NS.DefaultRunLoopMode, bool(true))
 		if event == nil {
 			mac_application->updateWindows()
 			if len(mac_events) != 0 {
@@ -1041,8 +1045,3 @@ mac_character_index :: proc "c" (view: objc.id, cmd: objc.SEL, point: NS.Point) 
 
 @(private="file")
 mac_ignore_text_command :: proc "c" (view: objc.id, cmd: objc.SEL, action: objc.SEL) {}
-
-@(private="package")
-platform_wait_frame :: proc(nanoseconds: u64) {
-	time.sleep(time.Duration(nanoseconds))
-}

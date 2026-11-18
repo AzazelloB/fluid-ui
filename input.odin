@@ -94,9 +94,9 @@ requests :: proc(app: ^UI) {
 }
 
 @(private="package")
-dispatch_requests :: proc(app: ^UI, poll_native: bool) {
+dispatch_requests :: proc(app: ^UI, poll_native: bool, deadline: u64 = 0) {
 	for app.running {
-		event, ok := poll_frame_event(app, poll_native)
+		event, ok := poll_frame_event(app, poll_native, deadline)
 		if !ok || !app.running {
 			break
 		}

@@ -99,14 +99,14 @@ begin_frame :: proc(app: ^UI) {
 }
 
 @(private="package")
-poll_frame_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
+poll_frame_event :: proc(app: ^UI, poll_native: bool, deadline: u64) -> (Platform_Event, bool) {
 	if !poll_native || app.live_frame_storage == nil {
-		return platform_poll_event(app, poll_native)
+		return platform_poll_event(app, poll_native, deadline)
 	}
 	event_context := context
 	app.event_context = &event_context
 	defer app.event_context = nil
-	return platform_poll_event(app, true)
+	return platform_poll_event(app, true, deadline)
 }
 
 @(private="package")
@@ -165,7 +165,7 @@ finish_frame :: proc(app: ^UI) -> (presented, visible: bool, refresh: u64) {
 		if platform_window_visible(window) {
 			visible = true
 			presented = present_window(window) || presented
-			if window.renderer.present_mode == .MAILBOX {
+			if ODIN_OS == .Darwin || window.renderer.present_mode == .MAILBOX {
 				refresh = max(refresh, platform_window_refresh_rate(window))
 			}
 		}
@@ -213,25 +213,31 @@ run :: proc(config: Config, owner: ^$Owner, create: proc(owner: ^Owner, ui: ^UI)
 	for ui.running {
 		begin_frame(&ui)
 		defer mem.free_all(context.temp_allocator)
-		requests(&ui)
+		dispatch_requests(&ui, true, frame_deadline)
 		presented, visible, refresh := finish_frame(&ui)
 		if !ui.running {
 			break
 		}
 		if refresh > 0 {
-			// Mailbox replaces queued images without blocking the producer. Pace to
-			// the fastest visible mailbox surface instead of drawing unused frames.
+			// Mailbox can replace queued images. On macOS, FIFO can stall inside
+			// Metal drawable acquisition on the UI thread. Pace the producer.
 			interval := 1_000_000_000 / refresh
 			now := monotonic_ns()
 			if refresh != previous_refresh || frame_deadline + interval <= now {
 				frame_deadline = ui.previous
 			}
 			frame_deadline += interval
+		} else {
+			frame_deadline = 0
+			if !presented {
+				frame_deadline = monotonic_ns() + (visible ? 1_000_000 : 10_000_000)
+			}
+		}
+		when ODIN_OS == .Windows {
+			now := monotonic_ns()
 			if frame_deadline > now {
 				platform_wait_frame(frame_deadline - now)
 			}
-		} else if !presented {
-			platform_wait_frame(visible ? 1_000_000 : 10_000_000)
 		}
 		previous_refresh = refresh
 	}

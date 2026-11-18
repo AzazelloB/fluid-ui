@@ -337,7 +337,7 @@ platform_window_refresh_rate :: proc(window: ^Window) -> u64 {
 }
 
 @(private="package")
-platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, bool) {
+platform_poll_event :: proc(app: ^UI, poll_native: bool, _: u64) -> (Platform_Event, bool) {
 	for {
 		if win_event_index < len(win_events) {
 			event := win_events[win_event_index]
