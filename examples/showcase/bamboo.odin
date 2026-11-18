@@ -28,8 +28,7 @@ create_bamboo :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase
 }
 
 update_bamboo :: proc(page: ^Bamboo, ui: ^fluid.UI, dt: f64) {
-	viewport := fluid.bounds(ui, ui.window.viewport)
-	stage := viewport
+	stage := showcase_body(ui)
 	stage.left = fluid.bounds(ui, page.sidebar).right
 	fluid.set_layout(ui, page.background, stage)
 	fluid.set_layout(ui, page.wind, fluid.rect(stage.right - 8.25, stage.bottom - 4, 6.75, 2.5))

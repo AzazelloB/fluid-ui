@@ -39,6 +39,8 @@ win_frame_timer: win.HANDLE
 @(private="file")
 win_cursors: [Cursor]win.HCURSOR
 @(private="file")
+win_resize_vertical, win_resize_nwse, win_resize_nesw: win.HCURSOR
+@(private="file")
 win_cursor: Cursor
 @(private="file")
 win_events: [dynamic]Platform_Event
@@ -95,6 +97,12 @@ WIN_INPUT_TOUCHPAD :: 0x10
 @(private="file")
 WIN_LIVE_RESIZE_TIMER :: 1
 
+// Themed non-client paint messages can redraw the old chrome on activation.
+@(private="file")
+WIN_WM_NCUAHDRAWCAPTION :: 0xAE
+@(private="file")
+WIN_WM_NCUAHDRAWFRAME :: 0xAF
+
 @(default_calling_convention="system", private="file")
 foreign clipboard_kernel {
 	GlobalSize :: proc(memory: win.HGLOBAL) -> win.SIZE_T ---
@@ -112,6 +120,9 @@ platform_init :: proc() -> bool {
 	win_cursors[.Move] = win.LoadCursorW(nil, transmute(win.LPCWSTR)win.IDC_SIZEALL)
 	win_cursors[.Text] = win.LoadCursorW(nil, transmute(win.LPCWSTR)win.IDC_IBEAM)
 	win_cursors[.Resize_Horizontal] = win.LoadCursorW(nil, transmute(win.LPCWSTR)win.IDC_SIZEWE)
+	win_resize_vertical = win.LoadCursorW(nil, transmute(win.LPCWSTR)win.IDC_SIZENS)
+	win_resize_nwse = win.LoadCursorW(nil, transmute(win.LPCWSTR)win.IDC_SIZENWSE)
+	win_resize_nesw = win.LoadCursorW(nil, transmute(win.LPCWSTR)win.IDC_SIZENESW)
 	class := win.WNDCLASSEXW{
 		cbSize = size_of(win.WNDCLASSEXW),
 		lpfnWndProc = win_window_proc,
@@ -148,7 +159,7 @@ platform_shutdown :: proc() {
 platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	title := win.utf8_to_wstring(string(config.title))
 	style := win.WS_OVERLAPPEDWINDOW
-	if .Borderless in config.flags {
+	if .Borderless in config.flags && !window.custom_title_bar {
 		style = win.WS_POPUP | win.WS_THICKFRAME
 		window.platform.borderless = true
 	}
@@ -218,6 +229,31 @@ platform_window_visible :: proc(window: ^Window) -> bool {
 }
 
 @(private="package")
+platform_window_action :: proc(window: ^Window, action: Window_Action) -> bool {
+	handle := window.platform.handle
+	command: win.WPARAM
+	#partial switch action {
+	case .Minimize: command = win.SC_MINIMIZE
+	case .Toggle_Maximize: command = win.IsZoomed(handle) ? win.SC_RESTORE : win.SC_MAXIMIZE
+	case: return false
+	}
+	return bool(win.PostMessageW(handle, win.WM_SYSCOMMAND, command, 0))
+}
+
+@(private="package")
+platform_window_state :: proc(window: ^Window) -> Window_State {
+	handle := window.platform.handle
+	if win.IsIconic(handle) { return .Minimized }
+	if win.IsZoomed(handle) { return .Maximized }
+	return .Normal
+}
+
+@(private="package")
+platform_window_is_active :: proc(window: ^Window) -> bool {
+	return window.platform.handle == win.GetActiveWindow()
+}
+
+@(private="package")
 platform_window_position :: proc(window: ^Window) -> [2]f32 {
 	origin: win.POINT
 	win.ClientToScreen(window.platform.handle, &origin)
@@ -252,15 +288,20 @@ platform_set_window_size :: proc(window: ^Window, size: [2]i32) -> bool {
 
 @(private="file")
 win_window_dimensions :: proc(window: ^Window, size: [2]i32) -> (i32, i32) {
-	if window.platform.borderless {
-		return max(1, size[0]), max(1, size[1])
+	style := transmute(u32)win.GetWindowLongW(window.platform.handle, win.GWL_STYLE)
+	rect := win.RECT{right = max(1, size[0]), bottom = max(1, size[1])}
+	_ = win_expand_client_rect(window, &rect, style)
+	return rect.right - rect.left, rect.bottom - rect.top
+}
+
+@(private="file")
+win_expand_client_rect :: proc(window: ^Window, rect: ^win.RECT, style: u32) -> bool {
+	if window.platform.borderless || window.custom_title_bar {
+		return true
 	}
 	handle := window.platform.handle
-	style := transmute(u32)win.GetWindowLongW(handle, win.GWL_STYLE)
 	ex_style := transmute(u32)win.GetWindowLongW(handle, win.GWL_EXSTYLE)
-	rect := win.RECT{right = max(1, size[0]), bottom = max(1, size[1])}
-	win.AdjustWindowRectExForDpi(&rect, style, false, ex_style, max(96, win.GetDpiForWindow(handle)))
-	return rect.right - rect.left, rect.bottom - rect.top
+	return bool(win.AdjustWindowRectExForDpi(rect, style, false, ex_style, max(96, win.GetDpiForWindow(handle))))
 }
 
 @(private="file")
@@ -334,6 +375,11 @@ platform_mouse_window :: proc(app: ^UI) -> ^Window {
 	if !win.GetCursorPos(&mouse) {
 		return nil
 	}
+	return win_mouse_window_at(app, mouse)
+}
+
+@(private="file")
+win_mouse_window_at :: proc(app: ^UI, mouse: win.POINT) -> ^Window {
 	handle := WindowFromPoint(mouse)
 	// Only interpret user data for handles owned by Fluid.
 	for window in app.windows {
@@ -364,18 +410,37 @@ platform_capture_mouse :: proc(window: ^Window) {
 platform_set_cursor :: proc(app: ^UI, cursor: Cursor) {
 	win_cursor = cursor
 	if win.GetCapture() != nil {
-		win.SetCursor(win_cursors[cursor])
-		return
-	}
-	if window := platform_mouse_window(app); window != nil {
-		point: win.POINT
-		win.GetCursorPos(&point)
-		win.ScreenToClient(window.platform.handle, &point)
-		size := platform_window_size(window)
-		if point.x >= 0 && point.y >= 0 && point.x < size[0] && point.y < size[1] {
+		// The OS owns the cursor during a native move or resize.
+		if app.captured != NO_ELEMENT || app.drag.element != NO_ELEMENT {
 			win.SetCursor(win_cursors[cursor])
 		}
+		return
 	}
+	point: win.POINT
+	if !win.GetCursorPos(&point) {
+		return
+	}
+	if window := win_mouse_window_at(app, point); window != nil {
+		// A custom resize grip falls inside the client rectangle. Use the
+		// native hit result so this frame cannot replace its resize cursor.
+		position := win.MAKELPARAM(int(point.x), int(point.y))
+		hit := win.SendMessageW(window.platform.handle, win.WM_NCHITTEST, 0, position)
+		if image := win_cursor_for_hit(hit); image != nil {
+			win.SetCursor(image)
+		}
+	}
+}
+
+@(private="file")
+win_cursor_for_hit :: proc(hit: win.LRESULT) -> win.HCURSOR {
+	switch hit {
+	case win.HTCLIENT: return win_cursors[win_cursor]
+	case win.HTLEFT, win.HTRIGHT: return win_cursors[.Resize_Horizontal]
+	case win.HTTOP, win.HTBOTTOM: return win_resize_vertical
+	case win.HTTOPLEFT, win.HTBOTTOMRIGHT: return win_resize_nwse
+	case win.HTTOPRIGHT, win.HTBOTTOMLEFT: return win_resize_nesw
+	}
+	return nil
 }
 
 @(private="file")
@@ -563,11 +628,8 @@ win_set_clip_frame :: proc(window: ^Window, clipped: bool) -> bool {
 		style |= win.WS_POPUP
 	} else {
 		style |= previous.?
-		if !state.borderless {
-			ex_style := transmute(u32)win.GetWindowLongW(handle, win.GWL_EXSTYLE)
-			if !win.AdjustWindowRectExForDpi(&client, style, false, ex_style, max(96, win.GetDpiForWindow(handle))) {
-				return false
-			}
+		if !win_expand_client_rect(window, &client, style) {
+			return false
 		}
 	}
 	if win.SetWindowLongW(handle, win.GWL_STYLE, transmute(win.LONG)style) == 0 {
@@ -580,7 +642,7 @@ win_set_clip_frame :: proc(window: ^Window, clipped: bool) -> bool {
 	}
 	// A region disables modern non-client rendering. Suppress the frame while
 	// clipped so Windows has no classic caption or outline to paint.
-	win_set_clip_chrome(handle, clipped)
+	win_set_clip_chrome(window, clipped)
 	if win.SetWindowPos(handle, nil, origin.x + client.left, origin.y + client.top,
 		client.right - client.left, client.bottom - client.top,
 		win.SWP_FRAMECHANGED | win.SWP_NOZORDER | win.SWP_NOACTIVATE) {
@@ -588,12 +650,13 @@ win_set_clip_frame :: proc(window: ^Window, clipped: bool) -> bool {
 	}
 	state.clip_frame_style = previous
 	win.SetWindowLongW(handle, win.GWL_STYLE, transmute(win.LONG)old_style)
-	win_set_clip_chrome(handle, previous != nil)
+	win_set_clip_chrome(window, previous != nil)
 	return false
 }
 
 @(private="file")
-win_set_clip_chrome :: proc(handle: win.HWND, clipped: bool) {
+win_set_clip_chrome :: proc(window: ^Window, clipped: bool) {
+	handle := window.platform.handle
 	policy := clipped ? win.DWMNCRENDERINGPOLICY.DWMNCRP_DISABLED : .DWMNCRP_USEWINDOWSTYLE
 	border_color: u32 = clipped ? 0xfffffffe : 0xffffffff // DWMWA_COLOR_NONE and DWMWA_COLOR_DEFAULT.
 	win.DwmSetWindowAttribute(handle, win.DWORD(win.DWMWINDOWATTRIBUTE.DWMWA_NCRENDERING_POLICY), &policy, size_of(policy))
@@ -616,19 +679,32 @@ win_window_proc :: proc "system" (
 	}
 	event := Platform_Event{window = window, timestamp = monotonic_ns()}
 	switch message {
-	case win.WM_NCPAINT:
-		if window.platform.clip_frame_style != nil {
+	case win.WM_NCPAINT, WIN_WM_NCUAHDRAWCAPTION, WIN_WM_NCUAHDRAWFRAME:
+		if window.custom_title_bar || window.platform.clip_frame_style != nil {
 			return 0
+		}
+		return win.DefWindowProcW(handle, message, wparam, lparam)
+	case win.WM_NCACTIVATE:
+		if window.custom_title_bar {
+			// Permit activation changes without repainting the legacy frame.
+			return 1
 		}
 		return win.DefWindowProcW(handle, message, wparam, lparam)
 	case win.WM_NCCALCSIZE:
-		if window.platform.borderless {
+		if window.platform.borderless || window.platform.clip_frame_style != nil {
 			return 0
+		}
+		if window.custom_title_bar {
+			return win_custom_client_rect(handle, wparam, lparam)
 		}
 		return win.DefWindowProcW(handle, message, wparam, lparam)
 	case win.WM_NCHITTEST:
+		if window.custom_title_bar {
+			return win_custom_hit(window, lparam)
+		}
 		if window.platform.borderless {
-			return win_borderless_hit(window, lparam)
+			point := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
+			return win_resize_hit(handle, point)
 		}
 		return win.DefWindowProcW(handle, message, wparam, lparam)
 	case win.WM_CLOSE:
@@ -681,15 +757,23 @@ win_window_proc :: proc "system" (
 			tracking := win.TRACKMOUSEEVENT{cbSize = size_of(win.TRACKMOUSEEVENT), dwFlags = win.TME_LEAVE, hwndTrack = handle}
 			window.platform.track_leave = bool(win.TrackMouseEvent(&tracking))
 		}
-	case win.WM_LBUTTONDOWN:
-		event.kind = .Mouse_Down
-		event.modifiers = win_modifiers()
+	case win.WM_LBUTTONDOWN, win.WM_LBUTTONUP, win.WM_NCLBUTTONDOWN, win.WM_NCLBUTTONUP, win.WM_NCLBUTTONDBLCLK:
 		point := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
+		if message != win.WM_LBUTTONDOWN && message != win.WM_LBUTTONUP {
+			if !window.custom_title_bar || wparam != win.HTMAXBUTTON {
+				return win.DefWindowProcW(handle, message, wparam, lparam)
+			}
+			// Route the custom maximize button through Fluid's pointer capture.
+			win.ScreenToClient(handle, &point)
+		}
 		event.position = {f32(point.x), f32(point.y)}
-		event.clicks = win_click_count(window, point, event.timestamp)
-	case win.WM_LBUTTONUP:
-		event.kind = .Mouse_Up
-		event.position = {f32(win.GET_X_LPARAM(lparam)), f32(win.GET_Y_LPARAM(lparam))}
+		if message == win.WM_LBUTTONUP || message == win.WM_NCLBUTTONUP {
+			event.kind = .Mouse_Up
+		} else {
+			event.kind = .Mouse_Down
+			event.modifiers = win_modifiers()
+			event.clicks = win_click_count(window, point, event.timestamp)
+		}
 	case win.WM_MOUSEWHEEL:
 		event.kind = .Wheel
 		point := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
@@ -699,8 +783,8 @@ win_window_proc :: proc "system" (
 		source: Win_Input_Message_Source
 		event.wheel_direct = bool(GetCurrentInputMessageSource(&source)) && source.device == WIN_INPUT_TOUCHPAD
 	case win.WM_SETCURSOR:
-		if u16(lparam & 0xffff) == win.HTCLIENT {
-			win.SetCursor(win_cursors[win_cursor])
+		if cursor := win_cursor_for_hit(lparam & 0xffff); cursor != nil {
+			win.SetCursor(cursor)
 			return 1
 		}
 		return win.DefWindowProcW(handle, message, wparam, lparam)
@@ -753,16 +837,65 @@ win_window_proc :: proc "system" (
 }
 
 @(private="file")
-win_borderless_hit :: proc(window: ^Window, lparam: win.LPARAM) -> win.LRESULT {
+win_custom_client_rect :: proc(handle: win.HWND, wparam: win.WPARAM, lparam: win.LPARAM) -> win.LRESULT {
+	if win.IsIconic(handle) {
+		return win.DefWindowProcW(handle, win.WM_NCCALCSIZE, wparam, lparam)
+	}
+	if win.IsZoomed(handle) {
+		rect := cast(^win.RECT)uintptr(lparam) // The first rectangle in either message form.
+		monitor := win.MonitorFromRect(rect, .MONITOR_DEFAULTTONEAREST)
+		info := win.MONITORINFO{cbSize = size_of(win.MONITORINFO)}
+		if win.GetMonitorInfoW(monitor, &info) {
+			rect^ = info.rcWork
+		}
+	}
+	// Use the entire frame as the drawable. Otherwise the side and bottom
+	// non-client strips remain visible behind the Vulkan surface.
+	return 0
+}
+
+@(private="file")
+win_custom_hit :: proc(window: ^Window, lparam: win.LPARAM) -> win.LRESULT {
 	handle := window.platform.handle
+	if window.platform.clip_frame_style != nil {
+		return win.HTCLIENT
+	}
+	screen_point := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
+	point := screen_point
+	win.ScreenToClient(handle, &point)
+	hit, over_element := window_hit_at(window, {f32(point.x), f32(point.y)})
+	if hit == .Maximize {
+		return win.HTMAXBUTTON
+	}
+	if hit == .Client && over_element {
+		return win.HTCLIENT
+	}
+	if !win.IsZoomed(handle) {
+		if edge := win_resize_hit(handle, screen_point); edge != win.HTCLIENT {
+			return edge
+		}
+	}
+	return hit == .Drag ? win.HTCAPTION : win.HTCLIENT
+}
+
+@(private="file")
+win_resize_frame_size :: proc(handle: win.HWND) -> [2]i32 {
+	dpi := max(win.GetDpiForWindow(handle), 96)
+	padding := win.GetSystemMetricsForDpi(win.SM_CXPADDEDBORDER, dpi)
+	return {
+		win.GetSystemMetricsForDpi(win.SM_CXSIZEFRAME, dpi) + padding,
+		win.GetSystemMetricsForDpi(win.SM_CYSIZEFRAME, dpi) + padding,
+	}
+}
+
+@(private="file")
+win_resize_hit :: proc(handle: win.HWND, point: win.POINT) -> win.LRESULT {
 	rect: win.RECT
 	win.GetWindowRect(handle, &rect)
-	x, y := win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)
-	dpi := win.GetDpiForWindow(handle)
-	border_x := win.GetSystemMetricsForDpi(32, dpi) // SM_CXSIZEFRAME
-	border_y := win.GetSystemMetricsForDpi(33, dpi) // SM_CYSIZEFRAME
-	left, right := x < rect.left + border_x, x >= rect.right - border_x
-	top, bottom := y < rect.top + border_y, y >= rect.bottom - border_y
+	x, y := point.x, point.y
+	grip := win_resize_frame_size(handle)
+	left, right := x < rect.left + grip.x, x >= rect.right - grip.x
+	top, bottom := y < rect.top + grip.y, y >= rect.bottom - grip.y
 	if top {
 		if left { return win.HTTOPLEFT }
 		if right { return win.HTTOPRIGHT }

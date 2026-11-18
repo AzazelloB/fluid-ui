@@ -161,6 +161,15 @@ use shared desktop coordinates, expressed in native desktop units divided by
 these spaces. Multiply UI units by `window_scale(window)` for native client
 coordinates or by `pixel_scale(window)` for physical renderer pixels.
 
+Use `.Custom_Title_Bar` in `Config.flags` to draw into the title area while
+keeping native resizing. The application supplies the visuals and layout.
+Mark an element with `set_window_hit(ui, id, .Drag)` for native title-bar
+dragging. Interactive elements above it still receive normal input.
+`elements.caption_button` provides platform-style close, minimize, and
+maximize controls with caller-defined bounds. Custom buttons can use
+`window_action`, `window_state`, and `window_is_active`. On Windows, mark a
+custom maximize button with `.Maximize` for Snap Layouts.
+
 `set_window_clip(window, Window_Circle{center, radius})` clips the window in
 local UI units. Pass `nil` to restore the full window. On macOS the window
 requires `.Transparent` for drawable clipping. `window_effect` can animate

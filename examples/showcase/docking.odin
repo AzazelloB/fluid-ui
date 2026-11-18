@@ -38,7 +38,7 @@ create_docking :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcas
 		fluid.set_label(ui, page.zones[dock], labels[dock])
 		fluid.set_text_style(ui, page.zones[dock], .Body, MUTED)
 	}
-	layout_docking(page, ui, fluid.bounds(ui, ui.window.viewport))
+	layout_docking(page, ui, showcase_body(ui))
 	area := fluid.bounds(ui, page.area)
 	page.card = elements.draggable_panel(page.card_scene, card_at({area.left + 12.25, area.top + 4}), {54, 103, 91, 255})
 	fluid.set_label(ui, page.card, "Drag")
@@ -158,7 +158,7 @@ layout_docking :: proc(page: ^Docking, ui: ^fluid.UI, viewport: fluid.Pins) {
 }
 
 update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
-	viewport := fluid.bounds(ui, ui.window.viewport)
+	viewport := showcase_body(ui)
 	layout_docking(page, ui, viewport)
 	dropped := fluid.dropped(ui, page.card)
 	in_drag := fluid.dragging(ui, page.card) || dropped
@@ -242,11 +242,11 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		return_card(page, ui)
 	}
 	r := fluid.bounds(ui, page.card)
-	outside := max(-mouse[0], mouse[0] - fluid.width(viewport), -mouse[1], mouse[1] - fluid.height(viewport))
+	outside := max(-mouse[0], mouse[0] - viewport.right, -mouse[1], mouse[1] - viewport.bottom)
 	// Stay inside the edge until the cursor breaks the tear-off threshold.
 	fluid.set_layout(ui, page.card, fluid.translated(r, {
-		clamp(r.left, 0, max(f32(0), fluid.width(viewport) - fluid.width(r))) - r.left,
-		clamp(r.top, 0, max(f32(0), fluid.height(viewport) - fluid.height(r))) - r.top,
+		clamp(r.left, 0, max(f32(0), viewport.right - fluid.width(r))) - r.left,
+		clamp(r.top, viewport.top, max(viewport.top, viewport.bottom - fluid.height(r))) - r.top,
 	}))
 	if outside > 3 && !page.detach_failed {
 		detach_card(page, ui, mouse)

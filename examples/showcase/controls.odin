@@ -97,7 +97,7 @@ update_controls :: proc(c: ^Controls, ui: ^fluid.UI, dt: f64) {
 		}
 		fluid.set_text_style(ui, c.action_feedback, .Caption, color, .Left)
 	}
-	viewport := fluid.bounds(ui, ui.window.viewport)
+	viewport := showcase_body(ui)
 	content := content_pins(ui, c.navigation, viewport)
 	x, y := content.left, content.top
 	w := fluid.width(content)

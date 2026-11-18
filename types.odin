@@ -71,6 +71,7 @@ Element :: struct {
 	surface, pressable: bool,
 	draggable:     bool,
 	pointer:       Pointer_Behavior,
+	window_hit:    Window_Hit,
 	owner:         ^Scene,
 	motion:        Motion,
 	press:         Element_Callback(Element_ID),

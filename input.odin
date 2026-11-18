@@ -26,7 +26,8 @@ hit_test :: proc(app: ^UI, window: ^Window, point: [2]f32) -> Element_ID {
 		if coordinate_window(element) != window || element.pointer == .Pass {
 			continue
 		}
-		if element.pointer == .Auto && !element.draggable && !accepts_press(element) && !element.focusable && element.behavior.input == nil {
+		if element.pointer == .Auto && (!window.custom_title_bar || element.window_hit == .Client) &&
+		   !element.draggable && !accepts_press(element) && !element.focusable && element.behavior.input == nil {
 			continue
 		}
 		if contains(element_bounds(element), point) {

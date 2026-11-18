@@ -7,6 +7,7 @@ Showcase :: struct {
 	launch:        Launch_Reveal,
 	pages:         fluid.Page_Set(Showcase),
 	sidebar:       fluid.Element_ID,
+	title_bar:     Title_Bar,
 	rectangles:    Rectangles,
 	conversations: Conversations,
 	docking:       Docking,
@@ -30,32 +31,37 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	fluid.create_pages(&app.pages, ui, app, definitions[:])
 	start_launch_reveal(&app.launch, ui.window)
 	navigation := fluid.create_scene(ui.window)
-	viewport := fluid.bounds(ui, ui.window.viewport)
-	width := navigation_width(app, ui)
-	app.sidebar = elements.panel(navigation, {right = width, bottom = viewport.bottom}, {21, 29, 40, 255})
+	app.sidebar = elements.panel(navigation, {}, {21, 29, 40, 255})
+	create_title_bar(&app.title_bar, navigation)
 	for page, index in app.pages.entries {
-		tab := elements.button(navigation, tab_pins(width, index), page.title, .Secondary)
+		tab := elements.button(navigation, {}, page.title, .Secondary)
 		fluid.set_text_style(ui, tab, .Body, INK)
 		fluid.bind_page_tab(&app.pages, index, tab)
 	}
+	update_navigation(app, ui, 0)
 	fluid.on_update(ui, app.sidebar, app, update_navigation)
 	fluid.activate(navigation)
 	fluid.open_page(&app.pages, 0)
 }
 
-// The inset content area starts beside the navigation sidebar.
+showcase_body :: proc(ui: ^fluid.UI) -> fluid.Pins {
+	viewport := fluid.bounds(ui, ui.window.viewport)
+	viewport.top = min(TITLE_BAR_HEIGHT, viewport.bottom)
+	return viewport
+}
+
 content_pins :: proc(ui: ^fluid.UI, sidebar: fluid.Element_ID, viewport: fluid.Pins) -> fluid.Pins {
 	return {
 		left = fluid.bounds(ui, sidebar).right + 2.25,
-		top = 1.5,
+		top = viewport.top + 1.5,
 		right = viewport.right - 2.25,
 		bottom = viewport.bottom - 1.5,
 	}
 }
 
-tab_pins :: proc(width: f32, index: int) -> fluid.Pins {
-	top := 1.5 + f32(index) * 3.375
-	return {left = 0.75, top = top, right = width - 0.75, bottom = top + 2.875}
+tab_pins :: proc(sidebar_right: f32, index: int) -> fluid.Pins {
+	top := TITLE_BAR_HEIGHT + 1.5 + f32(index) * 3.375
+	return {left = 0.75, top = top, right = sidebar_right - 0.75, bottom = top + 2.875}
 }
 
 navigation_width :: proc(app: ^Showcase, ui: ^fluid.UI) -> f32 {
@@ -69,9 +75,10 @@ navigation_width :: proc(app: ^Showcase, ui: ^fluid.UI) -> f32 {
 
 update_navigation :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	viewport := fluid.bounds(ui, ui.window.viewport)
-	width := navigation_width(app, ui)
-	fluid.set_target(ui, app.sidebar, {right = width, bottom = viewport.bottom})
+	sidebar_right := navigation_width(app, ui)
+	fluid.set_target(ui, app.sidebar, {right = sidebar_right, bottom = viewport.bottom})
+	layout_title_bar(&app.title_bar, ui, viewport, sidebar_right)
 	for page, index in app.pages.entries {
-		fluid.set_target(ui, page.tab, tab_pins(width, index))
+		fluid.set_target(ui, page.tab, tab_pins(sidebar_right, index))
 	}
 }

@@ -122,6 +122,7 @@ mac_register_classes :: proc() -> bool {
 	mac_method(view, "windowDidResize:", cast(objc.IMP)mac_window_resized, "v@:@")
 	mac_method(view, "windowWillStartLiveResize:", cast(objc.IMP)mac_window_live_resize_started, "v@:@")
 	mac_method(view, "windowDidEndLiveResize:", cast(objc.IMP)mac_window_live_resize_ended, "v@:@")
+	mac_method(view, "windowDidExitFullScreen:", cast(objc.IMP)mac_window_exited_fullscreen, "v@:@")
 	mac_method(view, "fluidLiveResizeTick:", cast(objc.IMP)mac_live_resize_tick, "v@:@")
 	mac_method(view, "windowDidChangeBackingProperties:", cast(objc.IMP)mac_window_resized, "v@:@")
 	mac_method(view, "windowDidResignKey:", cast(objc.IMP)mac_window_resigned_key, "v@:@")
@@ -161,7 +162,9 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	NS.scoped_autoreleasepool()
 	style: AppKit.WindowStyleMask = {.Titled, .Closable, .Miniaturizable, .Resizable}
 	class := objc.objc_getClass("NSWindow")
-	if .Borderless in config.flags {
+	if window.custom_title_bar {
+		style += {.FullSizeContentView}
+	} else if .Borderless in config.flags {
 		style = {}
 		class = mac_borderless_class
 	}
@@ -192,6 +195,11 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	mac_send(nil, mac_receiver(view), "setWantsLayer:", bool(true))
 	mac_send(nil, mac_receiver(handle), "setContentView:", view)
 	mac_send(nil, mac_receiver(handle), "setDelegate:", view)
+	if window.custom_title_bar {
+		mac_set_title_bar_hidden(handle, true)
+		behavior := mac_send(AppKit.WindowCollectionBehavior, mac_receiver(handle), "collectionBehavior")
+		mac_send(nil, mac_receiver(handle), "setCollectionBehavior:", behavior + {.FullScreenPrimary})
+	}
 	mac_send(nil, mac_receiver(handle), "makeFirstResponder:", view)
 	mac_send(nil, mac_receiver(handle), "setAcceptsMouseMovedEvents:", bool(true))
 	track := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSTrackingArea")), "alloc")
@@ -261,6 +269,36 @@ platform_show_window :: proc(window: ^Window, show: bool) -> bool {
 platform_window_visible :: proc(window: ^Window) -> bool {
 	handle := window.platform.handle
 	return mac_send(bool, mac_receiver(handle), "isVisible") && !mac_send(bool, mac_receiver(handle), "isMiniaturized")
+}
+
+@(private="package")
+platform_window_action :: proc(window: ^Window, action: Window_Action) -> bool {
+	handle := mac_receiver(window.platform.handle)
+	#partial switch action {
+	case .Minimize:
+		if platform_window_state(window) == .Fullscreen {
+			return false
+		}
+		mac_send(nil, handle, "miniaturize:", objc.id(nil))
+	case .Toggle_Maximize: mac_send(nil, handle, "zoom:", objc.id(nil))
+	case .Toggle_Fullscreen: mac_send(nil, handle, "toggleFullScreen:", objc.id(nil))
+	case: return false
+	}
+	return true
+}
+
+@(private="package")
+platform_window_state :: proc(window: ^Window) -> Window_State {
+	handle := mac_receiver(window.platform.handle)
+	if mac_send(bool, handle, "isMiniaturized") { return .Minimized }
+	if .FullScreen in mac_send(AppKit.WindowStyleMask, handle, "styleMask") { return .Fullscreen }
+	if mac_send(bool, handle, "isZoomed") { return .Maximized }
+	return .Normal
+}
+
+@(private="package")
+platform_window_is_active :: proc(window: ^Window) -> bool {
+	return mac_send(bool, mac_receiver(window.platform.handle), "isKeyWindow")
 }
 
 @(private="file")
@@ -371,25 +409,28 @@ platform_poll_event :: proc(app: ^UI, poll_native: bool) -> (Platform_Event, boo
 			return {}, false
 		}
 		handle := mac_send(^AppKit.Window, mac_receiver(event), "window")
+		handled := false
 		for window in app.windows {
 			if handle == window.platform.handle {
-				mac_queue_input(window, event)
+				handled = mac_queue_input(window, event)
 				break
 			}
 		}
-		mac_application->sendEvent(event)
+		if !handled {
+			mac_application->sendEvent(event)
+		}
 	}
 }
 
 @(private="file")
-mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) {
+mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) -> bool {
 	kind := mac_send(AppKit.EventType, mac_receiver(native_event), "type")
 	event := Platform_Event{window = window, timestamp = monotonic_ns()}
 	#partial switch kind {
 	case .KeyDown, .KeyUp:
 		key := mac_key(native_event)
 		if key == .Unknown {
-			return
+			return false
 		}
 		event.kind = .Key
 		event.key = {
@@ -405,7 +446,11 @@ mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) {
 		inside := point.x >= 0 && point.y >= 0 && point.x < bounds.size.width && point.y <= bounds.size.height
 		#partial switch kind {
 		case .LeftMouseDown:
-			if !inside { return }
+			if !inside { return false }
+			if hit, _ := window_hit_at(window, event.position); hit == .Drag {
+				mac_title_bar_press(window, native_event)
+				return true
+			}
 			event.kind = .Mouse_Down
 			event.modifiers = mac_modifiers(mac_send(AppKit.EventModifierFlags, mac_receiver(native_event), "modifierFlags"))
 			event.clicks = u8(clamp(mac_send(NS.Integer, mac_receiver(native_event), "clickCount"), 1, 255))
@@ -414,7 +459,7 @@ mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) {
 		case .MouseMoved, .LeftMouseDragged:
 			event.kind = .Mouse_Move
 		case .ScrollWheel:
-			if !inside { return }
+			if !inside { return false }
 			event.kind = .Wheel
 			event.wheel = f32(mac_send(f64, mac_receiver(native_event), "scrollingDeltaY"))
 			if mac_send(bool, mac_receiver(native_event), "hasPreciseScrollingDeltas") {
@@ -424,9 +469,35 @@ mac_queue_input :: proc(window: ^Window, native_event: ^AppKit.Event) {
 			}
 		}
 	case:
-		return
+		return false
 	}
 	append(&mac_events, event)
+	return false
+}
+
+@(private="file")
+mac_title_bar_press :: proc(window: ^Window, event: ^AppKit.Event) {
+	if platform_window_state(window) == .Fullscreen {
+		return
+	}
+	handle := mac_receiver(window.platform.handle)
+	if !platform_window_is_active(window) {
+		mac_send(nil, handle, "makeKeyAndOrderFront:", objc.id(nil))
+	}
+	if mac_send(NS.Integer, mac_receiver(event), "clickCount") != 2 {
+		mac_send(nil, handle, "performWindowDragWithEvent:", event)
+		return
+	}
+	defaults := mac_send(objc.id, mac_receiver(objc.objc_getClass("NSUserDefaults")), "standardUserDefaults")
+	key := mac_string("AppleActionOnDoubleClick")
+	defer mac_send(nil, mac_receiver(key), "release")
+	preference := mac_send(^NS.String, mac_receiver(defaults), "stringForKey:", key)
+	action := preference == nil ? "" : string(preference->UTF8String())
+	switch action {
+	case "None":
+	case "Minimize": _ = window_action(window, .Minimize)
+	case "", "Maximize", "Zoom", "Fill": _ = window_action(window, .Toggle_Maximize)
+	}
 }
 
 @(private="package")
@@ -608,7 +679,7 @@ platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) 
 	NS.scoped_autoreleasepool()
 	handle := mac_receiver(window.platform.handle)
 	style := mac_send(AppKit.WindowStyleMask, handle, "styleMask")
-	if .Titled in style {
+	if .Titled in style && !window.custom_title_bar {
 		// Full-size content lets the Vulkan drawable cover the title bar during
 		// the reveal. Keep the client rectangle and Metal layer on this window.
 		client := mac_content_rect(window)
@@ -620,17 +691,23 @@ platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) 
 		mac_send(nil, handle, "setStyleMask:", style)
 		frame := clipped ? client : mac_send(NS.Rect, handle, "frameRectForContentRect:", client)
 		mac_send(nil, handle, "setFrame:display:", frame, bool(true))
-		mac_send(nil, handle, "setTitleVisibility:", clipped ? AppKit.WindowTitleVisibility.Hidden : .Visible)
-		mac_send(nil, handle, "setTitlebarAppearsTransparent:", clipped)
-		buttons := [?]AppKit.WindowButton{.CloseButton, .MiniaturizeButton, .ZoomButton}
-		for button in buttons {
-			control := mac_send(objc.id, handle, "standardWindowButton:", button)
-			mac_send(nil, mac_receiver(control), "setHidden:", clipped)
-		}
+		mac_set_title_bar_hidden(window.platform.handle, clipped)
 		mac_resize_layer(window)
 	}
 	mac_send(nil, handle, "setHasShadow:", bool(!clipped))
 	return true
+}
+
+@(private="file")
+mac_set_title_bar_hidden :: proc(window: ^AppKit.Window, hidden: bool) {
+	handle := mac_receiver(window)
+	mac_send(nil, handle, "setTitleVisibility:", hidden ? AppKit.WindowTitleVisibility.Hidden : .Visible)
+	mac_send(nil, handle, "setTitlebarAppearsTransparent:", hidden)
+	buttons := [?]AppKit.WindowButton{.CloseButton, .MiniaturizeButton, .ZoomButton}
+	for button in buttons {
+		control := mac_send(objc.id, handle, "standardWindowButton:", button)
+		mac_send(nil, mac_receiver(control), "setHidden:", hidden)
+	}
 }
 
 @(private="file")
@@ -694,6 +771,14 @@ mac_window_resized :: proc "c" (view: objc.id, cmd: objc.SEL, note: objc.id) {
 	if window := mac_window_from_view(view); window != nil {
 		mac_resize_layer(window)
 		append(&mac_events, Platform_Event{kind = .Resize, window = window, timestamp = monotonic_ns()})
+	}
+}
+
+@(private="file")
+mac_window_exited_fullscreen :: proc "c" (view: objc.id, cmd: objc.SEL, note: objc.id) {
+	context = runtime.default_context()
+	if window := mac_window_from_view(view); window != nil && window.custom_title_bar {
+		mac_set_title_bar_hidden(window.platform.handle, true)
 	}
 }
 

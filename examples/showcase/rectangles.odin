@@ -33,7 +33,7 @@ anchor_pins :: proc(stage: fluid.Pins, shifted: bool) -> fluid.Pins {
 }
 
 update_rectangles :: proc(page: ^Rectangles, ui: ^fluid.UI, dt: f64) {
-	viewport := fluid.bounds(ui, ui.window.viewport)
+	viewport := showcase_body(ui)
 	stage := content_pins(ui, page.navigation, viewport)
 	fluid.set_target(ui, page.stage, stage)
 	fluid.set_target(ui, page.toggle, {

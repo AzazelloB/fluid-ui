@@ -53,7 +53,7 @@ conversation_pins :: proc(sidebar, heading: fluid.Pins, index: int) -> fluid.Pin
 }
 
 conversations_layout :: proc(page: ^Conversations, ui: ^fluid.UI) -> (sidebar, heading, area: fluid.Pins) {
-	viewport := fluid.bounds(ui, ui.window.viewport)
+	viewport := showcase_body(ui)
 	content := content_pins(ui, page.navigation, viewport)
 	sidebar = {left = viewport.right - 18.75, top = content.top, right = content.right, bottom = content.bottom}
 	heading = {left = sidebar.left + 1.25, top = sidebar.top + 1.25, right = sidebar.right - 1.25, bottom = sidebar.top + 3}

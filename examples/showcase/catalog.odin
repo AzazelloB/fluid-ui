@@ -144,7 +144,7 @@ catalog_detail_layout :: proc(viewport: fluid.Pins, window: ^fluid.Window, descr
 	layout: [Catalog_Part]fluid.Pins
 	content_width := min(f32(72), fluid.width(viewport) - 5)
 	left := (viewport.right - content_width) / 2
-	top := max(f32(2.5), (viewport.bottom - 36) / 2)
+	top := viewport.top + max(f32(2.5), (fluid.height(viewport) - 36) / 2)
 	art_width := content_width * 0.57
 	art := fluid.rect(left, top, art_width, min(f32(36), viewport.bottom - top - 2.5))
 	x := art.right + 2.5
@@ -233,7 +233,7 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 		catalog.selected = nil
 	}
 
-	viewport := fluid.bounds(ui, ui.window.viewport)
+	viewport := showcase_body(ui)
 	navigation := fluid.bounds(ui, catalog.navigation)
 	grid_width := min(f32(52), viewport.right - navigation.right - 4)
 	left := navigation.right + (viewport.right - navigation.right - grid_width) / 2
@@ -249,7 +249,7 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 	for product, i in CATALOG_PRODUCTS {
 		card := &catalog.cards[i]
 		x := left + f32(i) * (card_width + 1.25)
-		layout := catalog_card_layout(x, 1.5, card_width, preview_height)
+		layout := catalog_card_layout(x, viewport.top + 1.5, card_width, preview_height)
 		expanded := selected && i == index
 		reveal := expanded ? catalog.reveal : 0
 		progress := smoothstep(reveal)

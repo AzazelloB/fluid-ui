@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:math"
 import virtual "core:mem/virtual"
 
-Window_Flag :: enum {Hidden, Borderless, Transparent}
+Window_Flag :: enum {Hidden, Borderless, Transparent, Custom_Title_Bar}
 Window_Flags :: bit_set[Window_Flag]
 
 Config :: struct {
@@ -32,6 +32,7 @@ Window :: struct {
 	display_scale:    f32,
 	coordinate_scale: f32,
 	minimum_size:     [2]f32,
+	custom_title_bar: bool,
 	storage:          virtual.Arena,
 }
 
@@ -43,7 +44,10 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 	} else {
 		window = new(Window)
 	}
-	window^ = Window{ui = app, background = {17, 23, 32, 255}, minimum_size = config.minimum_size}
+	window^ = Window{
+		ui = app, background = {17, 23, 32, 255}, minimum_size = config.minimum_size,
+		custom_title_bar = .Custom_Title_Bar in config.flags,
+	}
 	if background, specified := config.background.?; specified {
 		window.background = background
 	}
@@ -142,6 +146,49 @@ show_window :: proc(window: ^Window) -> bool {
 
 hide_window :: proc(window: ^Window) -> bool {
 	return platform_show_window(window, false)
+}
+
+Window_Action :: enum {Close, Minimize, Toggle_Maximize, Toggle_Fullscreen}
+Window_State :: enum {Normal, Minimized, Maximized, Fullscreen}
+
+// Returns false if the action is unavailable for the window.
+// Close uses the deferred close path so the caller can finish processing input.
+window_action :: proc(window: ^Window, action: Window_Action) -> bool {
+	if !window.open || window.close_requested {
+		return false
+	}
+	if action == .Close {
+		window.close_requested = true
+		return true
+	}
+	return platform_window_action(window, action)
+}
+
+window_state :: proc(window: ^Window) -> Window_State {
+	return platform_window_state(window)
+}
+
+window_is_active :: proc(window: ^Window) -> bool {
+	return platform_window_is_active(window)
+}
+
+// The topmost hit element determines the native role in a custom title bar.
+// Maximize lets Windows identify a custom maximize button for Snap Layouts.
+Window_Hit :: enum {Client, Drag, Maximize}
+
+set_window_hit :: proc(ui: ^UI, id: Element_ID, hit: Window_Hit) {
+	get_element(ui, id).window_hit = hit
+}
+
+@(private="package")
+window_hit_at :: proc(window: ^Window, native_point: [2]f32) -> (Window_Hit, bool) {
+	if !window.custom_title_bar || !window.open || window.clip != nil {
+		return .Client, false
+	}
+	if id := hit_test(window.ui, window, native_point / window_scale(window)); id != NO_ELEMENT {
+		return get_element(window.ui, id).window_hit, true
+	}
+	return .Client, false
 }
 
 // Physical renderer pixels per UI unit.

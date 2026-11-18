@@ -90,7 +90,7 @@ follow_logs :: proc(page: ^Logs, ui: ^fluid.UI, id: fluid.Element_ID) {
 
 update_logs :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	page := &app.logs
-	area := content_pins(ui, app.sidebar, fluid.bounds(ui, ui.window.viewport))
+	area := content_pins(ui, app.sidebar, showcase_body(ui))
 	fluid.set_target(ui, page.status, {area.left, area.top, area.right - 15, area.top + 2.25})
 	fluid.set_target(ui, page.latest, {area.right - 15, area.top, area.right - 6.25, area.top + 2.25})
 	fluid.set_target(ui, page.pause, {area.right - 5.75, area.top, area.right, area.top + 2.25})
