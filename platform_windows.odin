@@ -180,6 +180,9 @@ platform_create_window :: proc(window: ^Window, config: Config) -> bool {
 	use_dark_mode: win.BOOL = true
 	win.DwmSetWindowAttribute(handle, win.DWORD(win.DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE),
 		&use_dark_mode, size_of(use_dark_mode))
+	if window.platform.borderless {
+		win_update_frame_chrome(window)
+	}
 	width, height := win_window_dimensions(window, {
 		max(1, i32(config.size[0] * UI_UNIT_POINTS * win_dpi_scale(handle) + 0.5)),
 		max(1, i32(config.size[1] * UI_UNIT_POINTS * win_dpi_scale(handle) + 0.5)),
@@ -642,7 +645,7 @@ win_set_clip_frame :: proc(window: ^Window, clipped: bool) -> bool {
 	}
 	// A region disables modern non-client rendering. Suppress the frame while
 	// clipped so Windows has no classic caption or outline to paint.
-	win_set_clip_chrome(window, clipped)
+	win_update_frame_chrome(window)
 	if win.SetWindowPos(handle, nil, origin.x + client.left, origin.y + client.top,
 		client.right - client.left, client.bottom - client.top,
 		win.SWP_FRAMECHANGED | win.SWP_NOZORDER | win.SWP_NOACTIVATE) {
@@ -650,15 +653,16 @@ win_set_clip_frame :: proc(window: ^Window, clipped: bool) -> bool {
 	}
 	state.clip_frame_style = previous
 	win.SetWindowLongW(handle, win.GWL_STYLE, transmute(win.LONG)old_style)
-	win_set_clip_chrome(window, previous != nil)
+	win_update_frame_chrome(window)
 	return false
 }
 
 @(private="file")
-win_set_clip_chrome :: proc(window: ^Window, clipped: bool) {
+win_update_frame_chrome :: proc(window: ^Window) {
 	handle := window.platform.handle
-	policy := clipped ? win.DWMNCRENDERINGPOLICY.DWMNCRP_DISABLED : .DWMNCRP_USEWINDOWSTYLE
-	border_color: u32 = clipped ? 0xfffffffe : 0xffffffff // DWMWA_COLOR_NONE and DWMWA_COLOR_DEFAULT.
+	hidden := window.platform.borderless || window.platform.clip_frame_style != nil
+	policy := hidden ? win.DWMNCRENDERINGPOLICY.DWMNCRP_DISABLED : .DWMNCRP_USEWINDOWSTYLE
+	border_color: u32 = hidden ? 0xfffffffe : 0xffffffff // DWMWA_COLOR_NONE and DWMWA_COLOR_DEFAULT.
 	win.DwmSetWindowAttribute(handle, win.DWORD(win.DWMWINDOWATTRIBUTE.DWMWA_NCRENDERING_POLICY), &policy, size_of(policy))
 	win.DwmSetWindowAttribute(handle, win.DWORD(win.DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR), &border_color, size_of(border_color))
 }
@@ -680,12 +684,12 @@ win_window_proc :: proc "system" (
 	event := Platform_Event{window = window, timestamp = monotonic_ns()}
 	switch message {
 	case win.WM_NCPAINT, WIN_WM_NCUAHDRAWCAPTION, WIN_WM_NCUAHDRAWFRAME:
-		if window.custom_title_bar || window.platform.clip_frame_style != nil {
+		if window.custom_title_bar || window.platform.borderless || window.platform.clip_frame_style != nil {
 			return 0
 		}
 		return win.DefWindowProcW(handle, message, wparam, lparam)
 	case win.WM_NCACTIVATE:
-		if window.custom_title_bar {
+		if window.custom_title_bar || window.platform.borderless {
 			// Permit activation changes without repainting the legacy frame.
 			return 1
 		}

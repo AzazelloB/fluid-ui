@@ -73,7 +73,7 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 			title = "Fluid card",
 			size = CARD_SIZE,
 			minimum_size = {7.5, 5},
-			flags = {.Hidden},
+			flags = {.Hidden, .Borderless},
 		})
 		if window == nil {
 			page.detach_failed = true
@@ -90,7 +90,6 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 		return_card(page, ui)
 		return
 	}
-	fluid.set_label(ui, page.card, "Drag back to dock")
 	if !fluid.show_window(window) {
 		page.detach_failed = true
 		fmt.eprintln("Cannot show floating window")
@@ -158,8 +157,7 @@ layout_docking :: proc(page: ^Docking, ui: ^fluid.UI, viewport: fluid.Pins) {
 }
 
 update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
-	viewport := showcase_body(ui)
-	layout_docking(page, ui, viewport)
+	layout_docking(page, ui, showcase_body(ui))
 	dropped := fluid.dropped(ui, page.card)
 	in_drag := fluid.dragging(ui, page.card) || dropped
 	if !in_drag {
@@ -181,7 +179,7 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		mouse := fluid.pointer_position(owner)
 		page.docked = nil
 		elements.set_choice(ui, page.placement, 0)
-		page.drag_origin = fluid.desktop_point(owner, mouse)
+		page.drag_origin = fluid.pointer_position(ui.window)
 		page.drag_moved = false
 		page.detach_failed = false
 		// Keep the same relative grab point as the docked shape contracts.
@@ -205,20 +203,11 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 	}
 	defer if dropped { fluid.deactivate(page.targets) }
 	mouse := fluid.pointer_position(ui.window)
-	delta := mouse - fluid.window_point(ui.window, page.drag_origin)
-	page.drag_moved = page.drag_moved || delta[0] * delta[0] + delta[1] * delta[1] > 0.0625
-	card_is_floating := page.floating_scene != nil && fluid.element_window(ui, page.card) == page.floating_scene.window
-	if page.drag_moved && card_is_floating && fluid.contains(fluid.bounds(ui, page.area), mouse) {
-		// Move the actual element onto the main window's drawing surface.
-		// Keep its source window alive until release so mouse capture survives.
-		fluid.transfer(ui, page.card, page.card_scene)
-		position := mouse - page.grab
-		fluid.set_layout(ui, page.card, card_at(position))
-		fluid.rebase_drag(ui, page.card)
-		// Keep capture's source alive, but do not obscure the destination with it.
-		_ = fluid.hide_window(page.floating_scene.window)
-		card_is_floating = false
-	}
+	page.drag_moved = page.drag_moved || mouse != page.drag_origin
+	r := card_at(mouse - page.grab)
+	viewport := fluid.bounds(ui, ui.window.viewport)
+	card_fits := r.left >= viewport.left && r.top >= viewport.top &&
+		r.right <= viewport.right && r.bottom <= viewport.bottom
 	selected: Maybe(Dock)
 	for dock in Dock {
 		over := fluid.contains(fluid.bounds(ui, page.zones[dock]), mouse)
@@ -226,6 +215,16 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 			selected = dock
 		}
 		fluid.set_color(ui, page.zones[dock], over ? DOCK_HIGHLIGHT : DOCK_COLOR)
+	}
+	dock_on_drop := dropped && selected != nil
+	card_is_floating := page.floating_scene != nil && fluid.element_window(ui, page.card) == page.floating_scene.window
+	if page.drag_moved && card_is_floating && (card_fits || dock_on_drop) {
+		fluid.transfer(ui, page.card, page.card_scene)
+		fluid.set_layout(ui, page.card, r)
+		fluid.rebase_drag(ui, page.card)
+		// Keep the source window alive until release so mouse capture survives.
+		_ = fluid.hide_window(page.floating_scene.window)
+		card_is_floating = false
 	}
 	if card_is_floating {
 		if page.drag_moved {
@@ -238,21 +237,27 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		}
 		return
 	}
-	if dropped {
-		return_card(page, ui)
-	}
-	r := fluid.bounds(ui, page.card)
-	outside := max(-mouse[0], mouse[0] - viewport.right, -mouse[1], mouse[1] - viewport.bottom)
-	// Stay inside the edge until the cursor breaks the tear-off threshold.
-	fluid.set_layout(ui, page.card, fluid.translated(r, {
-		clamp(r.left, 0, max(f32(0), viewport.right - fluid.width(r))) - r.left,
-		clamp(r.top, viewport.top, max(viewport.top, viewport.bottom - fluid.height(r))) - r.top,
-	}))
-	if outside > 3 && !page.detach_failed {
+	if !card_fits && !dock_on_drop && !page.detach_failed {
 		detach_card(page, ui, mouse)
+		if !page.detach_failed {
+			if dropped {
+				fluid.set_label(ui, page.card, "Drag back to dock")
+			}
+			return
+		}
+	}
+	if !dropped {
+		fluid.set_layout(ui, page.card, r)
 		return
 	}
-	if dock, ok := selected.?; dropped && ok {
+	return_card(page, ui)
+	if dock, ok := selected.?; ok {
 		dock_card(page, ui, dock)
+		return
 	}
+	// Keep a card released in the main window fully visible.
+	fluid.set_layout(ui, page.card, card_at({
+		clamp(r.left, viewport.left, max(viewport.left, viewport.right - CARD_SIZE[0])),
+		clamp(r.top, viewport.top, max(viewport.top, viewport.bottom - CARD_SIZE[1])),
+	}))
 }
