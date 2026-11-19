@@ -5,7 +5,7 @@ import fluid ".."
 FOCUS_BORDER :: fluid.Color{143, 225, 196, 255}
 
 panel :: proc(window: ^fluid.Window, pins: fluid.Pins, color: fluid.Color) -> fluid.Element_ID {
-	return fluid.create_element(window, {pins = pins, color = color, surface = true})
+	return fluid.create_element(window, {pins = pins, color = color, surface = true, draw = draw_default})
 }
 
 Button_Variant :: enum {Primary, Secondary}
@@ -40,9 +40,9 @@ button_style :: proc(style: fluid.Style) -> fluid.Style {
 }
 
 draggable_panel :: proc(window: ^fluid.Window, pins: fluid.Pins, color: fluid.Color) -> fluid.Element_ID {
-	return fluid.create_element(window, {pins = pins, color = color, surface = true, draggable = true})
+	return fluid.create_element(window, {pins = pins, color = color, surface = true, draggable = true, draw = draw_default})
 }
 
 label :: proc(window: ^fluid.Window, pins: fluid.Pins, text: string) -> fluid.Element_ID {
-	return fluid.create_element(window, {pins = pins, label = text, style = {focus_border = FOCUS_BORDER}})
+	return fluid.create_element(window, {pins = pins, label = text, style = {focus_border = FOCUS_BORDER}, draw = draw_default})
 }

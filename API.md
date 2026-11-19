@@ -21,8 +21,10 @@ Hiding cancels focus and pointer interaction. `remove(ui, id)` destroys the
 element and invalidates its ID. A page can remove its elements on exit and
 create new ones from app-owned state when reopened.
 
-Use `fluid.set_draw` to replace drawing on an engine element or a stock
-control. The callback receives an `Element_View` with the current bounds,
+Drawing is opt-in for engine elements. Supply a `draw` callback at creation or
+use `fluid.set_draw` to replace it. Pass `nil` to stop drawing. Panels, labels,
+and other stock controls in `elements` install their own draw callbacks. The
+callback receives an `Element_View` with the current bounds,
 text style, and interaction state. `render_clip` intersects the current drawing
 clip and returns the previous rectangle for `restore_render_clip`. The Controls
 showcase paints the Name
@@ -133,7 +135,7 @@ it while a Back button above it still receives hits.
 Presses use the coordinates of the mouse-down event. Behavior callbacks see
 hover from before behavior dispatch. Fluid refreshes hover again after
 layout and window changes so the cursor and drawing use the same result.
-Set `Style.hover_border` to draw a different border color while hovered.
+The stock elements use `Style.hover_border` to change the border while hovered.
 
 ## Scroll views
 

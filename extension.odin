@@ -34,7 +34,7 @@ make_element_view :: proc(ui: ^UI, id: Element_ID, element: ^Element) -> Element
 	}
 }
 
-// A nil callback restores the engine's basic surface and label drawing.
+// A nil callback stops drawing the element. Input and updates still run.
 set_draw :: proc(ui: ^UI, id: Element_ID, draw: Element_Draw) {
 	get_element(ui, id).draw = draw
 }

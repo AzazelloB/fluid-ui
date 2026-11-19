@@ -63,7 +63,7 @@ create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI) {
 		card := &catalog.cards[index]
 		card.parts[.Surface] = elements.button(ui.window, {}, "")
 		fluid.set_color(ui, card.parts[.Surface], SURFACE)
-		fluid.set_draw(ui, card.parts[.Surface], fluid.draw_default)
+		fluid.set_draw(ui, card.parts[.Surface], elements.draw_default)
 		fluid.on_press(ui, card.parts[.Surface], catalog, open_catalog_card)
 		card.parts[.Backdrop] = elements.panel(ui.window, {}, product.backdrop)
 		card.parts[.Shell] = elements.panel(ui.window, {}, product.shell)

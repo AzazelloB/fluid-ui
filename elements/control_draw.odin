@@ -48,17 +48,17 @@ draw_control :: proc(view: fluid.Element_View) {
 	case Choice_Control:
 		draw_choice(view, &state, now)
 	case Button_Control:
-		fluid.draw_default(button_frame(view, &control.motion, state.variant == .Secondary, now))
+		draw_default(button_frame(view, &control.motion, state.variant == .Secondary, now))
 	case Toggle_Control:
-		fluid.draw_default(button_frame(view, &control.motion, true, now))
+		draw_default(button_frame(view, &control.motion, true, now))
 	case Number_Control, Text_Control:
 		draw_field(view)
 	case Guard_Control:
 		frame := button_frame(view, &control.motion, false, now)
-		fluid.draw_element_surface(frame)
+		draw_element_surface(frame)
 		scale := fluid.pixel_scale(frame.window)
 		draw_guard(frame.window.renderer, fluid.pixel_rect(frame.pins, scale), frame.style.radius * scale, &state, now)
-		fluid.draw_element_label(frame)
+		draw_element_label(frame)
 	}
 }
 
@@ -76,7 +76,7 @@ DEFAULT_FIELD_TEXT_STYLE :: Field_Text_Style{
 draw_field :: proc(view: fluid.Element_View, style: Field_Text_Style = DEFAULT_FIELD_TEXT_STYLE) {
 	control := get_control(view.ui, view.id)
 	frame := button_frame(view, &control.motion, false, fluid.monotonic_ns())
-	fluid.draw_element_surface(frame)
+	draw_element_surface(frame)
 	draw_field_text(frame, style)
 }
 
@@ -90,7 +90,7 @@ draw_field_text :: proc(view: fluid.Element_View, style: Field_Text_Style = DEFA
 			return
 		}
 	}
-	fluid.draw_element_label(view)
+	draw_element_label(view)
 }
 
 confirmation_progress :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> f32 {
@@ -187,7 +187,7 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u
 					view.style.square_corners |= {.Top_Right, .Bottom_Right}
 				}
 			}
-			fluid.draw_element_surface(button_frame(view, &item.motion, !choice.neighbors, now))
+			draw_element_surface(button_frame(view, &item.motion, !choice.neighbors, now))
 		}
 		if item.label == "" {
 			continue

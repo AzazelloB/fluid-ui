@@ -2,6 +2,27 @@ package fluid
 
 import "core:math"
 
+// Resolve hover and focus borders before painting a surface in physical pixels.
+paint_styled_surface :: proc(renderer: ^Renderer, pixels: FRect, style: Style,
+	color: Color, hovered, focused: bool, scale: f32,
+) {
+	border_color := style.border
+	if hovered {
+		if hover_color, ok := style.hover_border.?; ok {
+			border_color = hover_color
+		}
+	}
+	border_width := style.border_width
+	if focused {
+		if focus_border, styled := style.focus_border.?; styled {
+			border_color = focus_border
+			border_width = max(border_width, 0.0625)
+		}
+	}
+	paint_surface(renderer, pixels, color, border_color,
+		style.radius * scale, border_width * scale, style.shadow * scale, style.square_corners)
+}
+
 // Draw a surface using physical pixels and caller-resolved colors.
 paint_surface :: proc(renderer: ^Renderer, pixels: FRect, fill, border_color: Color,
 	radius, border_width, shadow: f32, square_corners: bit_set[Corner] = {},

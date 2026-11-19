@@ -230,9 +230,10 @@ draw_scroll_view :: proc(view: Element_View) {
 	state := get_scroll_state(view.ui, view.id)
 	layout := scroll_layout(state, view)
 	advance_scroll(state, layout)
-	draw_element_surface(view)
-	if layout.clip.w == 0 || layout.clip.h == 0 { return }
 	renderer := view.window.renderer
+	paint_styled_surface(renderer, pixel_rect(view.pins, layout.scale), view.style,
+		view.color, view.hovered, view.focused, layout.scale)
+	if layout.clip.w == 0 || layout.clip.h == 0 { return }
 	if layout.last > state.first {
 		render_fill_rect(renderer, pixel_rect(layout.track, layout.scale), {30, 42, 57, 255})
 		render_fill_rect(renderer, pixel_rect(scroll_thumb(state, layout), layout.scale), {139, 157, 178, 255})
