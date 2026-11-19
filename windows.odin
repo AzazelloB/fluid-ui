@@ -23,7 +23,7 @@ Window :: struct {
 	background:       Color,
 	close_requested:  bool,
 	effect:           Window_Effect,
-	clip:             Maybe(Window_Circle),
+	clip:             Window_Mask,
 	drawable_size:    [2]i32,
 	renderer:         ^Renderer,
 	platform:         Platform_Window,
@@ -181,7 +181,7 @@ set_window_hit :: proc(ui: ^UI, id: Element_ID, hit: Window_Hit) {
 
 @(private="package")
 window_hit_at :: proc(window: ^Window, native_point: [2]f32) -> Window_Hit {
-	if !window.custom_title_bar || !window.open || window.clip != nil {
+	if !window.custom_title_bar || !window.open || window.clip.write != nil {
 		return .Client
 	}
 	if id := hit_test(window.ui, window, native_point / window_scale(window)); id != NO_ELEMENT {
@@ -239,38 +239,39 @@ sync_window_geometry :: proc(window: ^Window) {
 		window.display_scale = display_scale
 		release_window_text(window)
 	}
-	if coordinate_scale != window.coordinate_scale {
-		window.coordinate_scale = coordinate_scale
-		if window.clip != nil {
-			_ = platform_set_window_clip(window, window.clip)
-		}
-	}
+	previous_scale := window.coordinate_scale
+	previous_size := window.drawable_size
+	window.coordinate_scale = coordinate_scale
 	size := platform_window_size(window)
 	scale := window_scale(window)
 	get_element(window.ui, window.viewport).pins = Pins{right = f32(size[0]) / scale, bottom = f32(size[1]) / scale}
 	density := display_scale / coordinate_scale
 	window.drawable_size = {i32(math.round(f32(size[0]) * density)), i32(math.round(f32(size[1]) * density))}
-}
-
-Window_Circle :: struct {
-	center: [2]f32,
-	radius: f32,
-}
-
-// The clip is specified in window-local UI units. Pass nil to clear it.
-// Platforms that clip the drawable require a transparent window.
-set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) -> bool {
-	assert(window.open)
-	if shape, clipped := circle.?; clipped {
-		assert(shape.radius >= 0)
-		if platform_clips_drawable && !window.renderer.transparent {
-			return false
+	when !platform_clips_drawable {
+		if window.clip.write != nil && (coordinate_scale != previous_scale || window.drawable_size != previous_size) {
+			_ = platform_set_window_clip(window, window.clip)
 		}
 	}
-	if !platform_set_window_clip(window, circle) {
+}
+
+// Write one byte per physical pixel in row-major order. The buffer starts
+// cleared. Nonzero bytes keep pixels visible. Scale is pixels per UI unit.
+// The callback borrows its buffer and the caller keeps state alive until clear.
+Window_Mask :: struct {
+	state: rawptr,
+	write: proc(state: rawptr, pixels: []u8, size: [2]i32, scale: f32),
+}
+
+// Pass an empty mask to clear the clip. A drawable clip requires a transparent window.
+set_window_clip :: proc(window: ^Window, mask: Window_Mask = {}) -> bool {
+	assert(window.open)
+	if mask.write != nil && platform_clips_drawable && !window.renderer.transparent {
 		return false
 	}
-	window.clip = circle
+	if !platform_set_window_clip(window, mask) {
+		return false
+	}
+	window.clip = mask
 	return true
 }
 

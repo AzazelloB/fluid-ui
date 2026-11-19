@@ -179,12 +179,16 @@ maximize controls with caller-defined bounds. Custom buttons can use
 `window_action`, `window_state`, and `window_is_active`. On Windows, mark a
 custom maximize button with `.Maximize` for Snap Layouts.
 
-`set_window_clip(window, Window_Circle{center, radius})` clips the window in
-local UI units. Pass `nil` to restore the full window. On macOS the window
-requires `.Transparent` for drawable clipping. To animate a clip, supply the
-duration to `window_effect` and compute the circle in its draw callback. The
-showcase's launch reveal starts with a zero-radius clip and expands it until the
-whole window is visible.
+`set_window_clip(window, Window_Mask{state, write})` installs a binary window
+mask. The callback receives a zero-filled, row-major buffer with one byte per
+physical pixel and the scale from window-local UI units to pixels. Write
+nonzero bytes wherever the window should remain visible. Call
+`set_window_clip(window)` to restore the full window.
+
+On macOS, the window needs `.Transparent`, and the mask clips the drawable.
+On Windows, the mask sets the native window region and also affects input.
+To animate a mask, update its state in a `window_effect` callback and apply it
+again. The showcase uses this to expand a circle from a zero-radius clip.
 
 ## Direct controls
 

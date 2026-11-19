@@ -50,10 +50,8 @@ Renderer :: struct {
 @(private="file")
 Frame_Constants :: struct {
 	scale: [2]f32,
-	circle_center: [2]f32,
-	circle_radius_squared: f32,
-	clip_enabled: u32,
-	_padding: [2]u32,
+	window_mask: [2]u32, // Byte offset and row width. Zero width disables the mask.
+	_padding: [4]u32,
 	shader: Shader_Constants,
 }
 
@@ -74,6 +72,7 @@ Shader_Constants :: struct {
 	rect, data: [4]f32,
 }
 
+#assert(offset_of(Frame_Constants, window_mask) == 8)
 #assert(offset_of(Frame_Constants, shader) == 32)
 #assert(size_of(Frame_Constants) == 64)
 
@@ -759,11 +758,27 @@ render_begin :: proc(r: ^Renderer, pixel_size: [2]i32, background: Color) -> boo
 }
 
 @(private="package")
-render_present :: proc(r: ^Renderer, clip: Maybe(Window_Circle)) -> bool {
+render_present :: proc(r: ^Renderer, mask: Window_Mask = {}, scale: f32 = 0) -> bool {
 	if !r.recording {
 		return false
 	}
 	r.recording = false
+	window_mask: [2]u32
+	if mask.write != nil && len(r.batches) > 0 {
+		offset := len(r.masks)
+		width, height := int(r.extent.width), int(r.extent.height)
+		// Text and window masks share a per-frame storage buffer.
+		if (r.vulkan.mask_limit &~ 3) - offset < width * height {
+			return false
+		}
+		resize(&r.masks, offset + width * height)
+		pixels := r.masks[offset:]
+		for &pixel in pixels {
+			pixel = 0
+		}
+		mask.write(mask.state, pixels, {i32(width), i32(height)}, scale)
+		window_mask = {u32(offset), u32(width)}
+	}
 	v := r.vulkan
 	frame := &r.frames[r.frame_index]
 	if !vulkan_ok(vk.WaitForFences(v.device, 1, &frame.completed, true, max(u64)), "wait for frame fence") ||
@@ -796,7 +811,7 @@ render_present :: proc(r: ^Renderer, clip: Maybe(Window_Circle)) -> bool {
 		}
 		image.present_pending = false
 	}
-	if !record_frame(r, frame, image.framebuffer, clip) ||
+	if !record_frame(r, frame, image.framebuffer, window_mask) ||
 		!vulkan_ok(vk.ResetFences(v.device, 1, &frame.completed), "reset frame fence") {
 		r.failed = true
 		return false
@@ -838,22 +853,24 @@ render_present :: proc(r: ^Renderer, clip: Maybe(Window_Circle)) -> bool {
 
 @(private="file")
 upload_frame :: proc(r: ^Renderer, frame: ^Render_Frame) -> bool {
-	if len(r.indices) == 0 {
+	if len(r.batches) == 0 {
 		return true
 	}
 	v := r.vulkan
-	vertex_bytes := len(r.vertices) * size_of(Draw_Vertex)
-	geometry_bytes := vertex_bytes + len(r.indices) * size_of(u32)
-	if !ensure_buffer(v, &frame.geometry, geometry_bytes, {.VERTEX_BUFFER, .INDEX_BUFFER}) {
-		return false
+	if len(r.indices) > 0 {
+		vertex_bytes := len(r.vertices) * size_of(Draw_Vertex)
+		geometry_bytes := vertex_bytes + len(r.indices) * size_of(u32)
+		if !ensure_buffer(v, &frame.geometry, geometry_bytes, {.VERTEX_BUFFER, .INDEX_BUFFER}) {
+			return false
+		}
+		vertices := (cast([^]Draw_Vertex) frame.geometry.data)[:len(r.vertices)]
+		indices := (cast([^]u32) (uintptr(frame.geometry.data) + uintptr(vertex_bytes)))[:len(r.indices)]
+		copy(vertices, r.vertices[:])
+		copy(indices, r.indices[:])
 	}
-	vertices := (cast([^]Draw_Vertex) frame.geometry.data)[:len(r.vertices)]
-	indices := (cast([^]u32) (uintptr(frame.geometry.data) + uintptr(vertex_bytes)))[:len(r.indices)]
-	copy(vertices, r.vertices[:])
-	copy(indices, r.indices[:])
 	mask_bytes := max(4, (len(r.masks) + 3) &~ 3)
 	if mask_bytes > v.mask_limit {
-		fmt.eprintln("The frame's text masks exceed the Vulkan storage buffer limit.")
+		fmt.eprintln("The frame's masks exceed the Vulkan storage buffer limit.")
 		return false
 	}
 	if frame.masks.size < mask_bytes {
@@ -922,7 +939,7 @@ release_buffer :: proc(device: vk.Device, buffer: ^Mapped_Buffer) {
 }
 
 @(private="file")
-record_frame :: proc(r: ^Renderer, frame: ^Render_Frame, framebuffer: vk.Framebuffer, clip: Maybe(Window_Circle)) -> bool {
+record_frame :: proc(r: ^Renderer, frame: ^Render_Frame, framebuffer: vk.Framebuffer, window_mask: [2]u32) -> bool {
 	command := frame.command
 	begin := vk.CommandBufferBeginInfo{sType = .COMMAND_BUFFER_BEGIN_INFO, flags = {.ONE_TIME_SUBMIT}}
 	if !vulkan_ok(vk.ResetCommandBuffer(command, {}), "reset command buffer") ||
@@ -938,17 +955,12 @@ record_frame :: proc(r: ^Renderer, frame: ^Render_Frame, framebuffer: vk.Framebu
 	if len(r.batches) > 0 {
 		w, h := f32(r.extent.width), f32(r.extent.height)
 		viewport := vk.Viewport{width = w, height = h, maxDepth = 1}
-		params := Frame_Constants{scale = {2 / w, 2 / h}}
-		if circle, clipped := clip.?; clipped {
-			params.circle_center = circle.center
-			params.circle_radius_squared = circle.radius * circle.radius
-			params.clip_enabled = 1
-		}
+		params := Frame_Constants{scale = {2 / w, 2 / h}, window_mask = window_mask}
 		layout := r.vulkan.pipeline_layout
 		vk.CmdSetViewport(command, 0, 1, &viewport)
 		vk.CmdPushConstants(command, layout, {.VERTEX, .FRAGMENT}, 0, size_of(params), &params)
+		vk.CmdBindDescriptorSets(command, .GRAPHICS, layout, 0, 1, &frame.descriptor, 0, nil)
 		if len(r.indices) > 0 {
-			vk.CmdBindDescriptorSets(command, .GRAPHICS, layout, 0, 1, &frame.descriptor, 0, nil)
 			start: vk.DeviceSize
 			vk.CmdBindVertexBuffers(command, 0, 1, &frame.geometry.handle, &start)
 			vk.CmdBindIndexBuffer(command, frame.geometry.handle, vk.DeviceSize(len(r.vertices) * size_of(Draw_Vertex)), .UINT32)

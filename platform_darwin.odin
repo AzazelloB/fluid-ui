@@ -732,8 +732,8 @@ platform_create_surface :: proc(window: ^Window, instance: vk.Instance) -> (vk.S
 platform_clips_drawable :: true
 
 @(private="package")
-platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) -> bool {
-	clipped := circle != nil
+platform_set_window_clip :: proc(window: ^Window, mask: Window_Mask) -> bool {
+	clipped := mask.write != nil
 	if window.platform.clip_active == clipped {
 		return true
 	}

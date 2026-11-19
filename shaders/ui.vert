@@ -2,9 +2,6 @@
 
 layout(push_constant) uniform Frame {
     vec2 scale;
-    vec2 circle_center;
-    float circle_radius_squared;
-    uint clip_enabled;
 } frame;
 
 layout(location = 0) in vec2 position;

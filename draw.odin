@@ -29,12 +29,9 @@ present_window :: proc(window: ^Window) -> bool {
 	if effect.draw != nil {
 		effect.draw(effect.data, window, f32(effect.elapsed / effect.duration))
 	}
-	clip: Maybe(Window_Circle)
 	when platform_clips_drawable {
-		if circle, clipped := window.clip.?; clipped {
-			scale := pixel_scale(window)
-			clip = Window_Circle{circle.center * scale, circle.radius * scale}
-		}
+		return render_present(window.renderer, window.clip, pixel_scale(window))
+	} else {
+		return render_present(window.renderer)
 	}
-	return render_present(window.renderer, clip)
 }

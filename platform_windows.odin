@@ -78,9 +78,17 @@ foreign imm {
 	ImmSetCandidateWindow :: proc(input: win.HANDLE, form: ^Win_Candidate_Form) -> win.BOOL ---
 }
 
+@(private="file")
+Win_Region_Header :: struct {
+	size, kind, count, bounds_bytes: u32,
+	bounds: win.RECT,
+}
+
+#assert(size_of(Win_Region_Header) == 2 * size_of(win.RECT))
+
 @(default_calling_convention="system", private="file")
 foreign region_gdi {
-	CreateEllipticRgn :: proc(left, top, right, bottom: i32) -> win.HRGN ---
+	ExtCreateRegion :: proc(transform: rawptr, bytes: u32, data: ^Win_Region_Header) -> win.HRGN ---
 }
 
 @(default_calling_convention="system", private="file")
@@ -578,11 +586,10 @@ platform_create_surface :: proc(window: ^Window, instance: vk.Instance) -> (vk.S
 platform_clips_drawable :: false
 
 @(private="package")
-platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) -> bool {
+platform_set_window_clip :: proc(window: ^Window, mask: Window_Mask) -> bool {
 	state := &window.platform
 	handle := state.handle
-	shape, clipped := circle.?
-	if !clipped {
+	if mask.write == nil {
 		if state.clip_frame_style == nil {
 			return true
 		}
@@ -592,10 +599,7 @@ platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) 
 		return win_set_clip_frame(window, false)
 	}
 
-	scale := window_scale(window)
-	x, y := i32(shape.center[0] * scale), i32(shape.center[1] * scale)
-	radius := i32(shape.radius * scale + 0.5)
-	region := CreateEllipticRgn(x - radius, y - radius, x + radius, y + radius)
+	region := win_mask_region(window, mask)
 	if region == nil {
 		return false
 	}
@@ -612,6 +616,51 @@ platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) 
 		_ = win_set_clip_frame(window, false)
 	}
 	return false
+}
+
+@(private="file")
+win_mask_region :: proc(window: ^Window, mask: Window_Mask) -> win.HRGN {
+	size := platform_window_size(window)
+	if size.x <= 0 || size.y <= 0 {
+		return win.CreateRectRgnIndirect(&win.RECT{})
+	}
+	pixels := make([]u8, int(size.x) * int(size.y), context.temp_allocator)
+	mask.write(mask.state, pixels, size, window_scale(window))
+
+	// Win32 regions accept sorted, nonoverlapping rectangles. Emit visible
+	// runs from each row in the order required by ExtCreateRegion.
+	rects := make([dynamic]win.RECT, 2, int(size.y) + 2, context.temp_allocator)
+	bounds := win.RECT{left = size.x, top = size.y}
+	for y in 0..<size.y {
+		offset := int(y) * int(size.x)
+		row := pixels[offset:offset + int(size.x)]
+		x: i32
+		for x < size.x {
+			if row[x] == 0 {
+				x += 1
+				continue
+			}
+			left := x
+			for x < size.x && row[x] != 0 {
+				x += 1
+			}
+			append(&rects, win.RECT{left, y, x, y + 1})
+			bounds.left = min(bounds.left, left)
+			bounds.top = min(bounds.top, y)
+			bounds.right = max(bounds.right, x)
+			bounds.bottom = y + 1
+		}
+	}
+	if len(rects) == 2 {
+		return win.CreateRectRgnIndirect(&win.RECT{})
+	}
+	header := cast(^Win_Region_Header)raw_data(rects[:])
+	count := len(rects) - 2
+	header^ = {
+		size = size_of(Win_Region_Header), kind = 1, // RDH_RECTANGLES
+		count = u32(count), bounds_bytes = u32(count * size_of(win.RECT)), bounds = bounds,
+	}
+	return ExtCreateRegion(nil, u32(len(rects) * size_of(win.RECT)), header)
 }
 
 @(private="file")
