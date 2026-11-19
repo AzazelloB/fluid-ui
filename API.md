@@ -172,8 +172,10 @@ custom maximize button with `.Maximize` for Snap Layouts.
 
 `set_window_clip(window, Window_Circle{center, radius})` clips the window in
 local UI units. Pass `nil` to restore the full window. On macOS the window
-requires `.Transparent` for drawable clipping. `window_effect` can animate
-this clip or draw other overlays; the application supplies the timing and shape.
+requires `.Transparent` for drawable clipping. To animate a clip, supply the
+duration to `window_effect` and compute the circle in its draw callback. The
+showcase's launch reveal starts with a zero-radius clip and expands it until the
+whole window is visible.
 
 ## Direct controls
 

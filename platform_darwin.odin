@@ -742,8 +742,8 @@ platform_set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) 
 	handle := mac_receiver(window.platform.handle)
 	style := mac_send(AppKit.WindowStyleMask, handle, "styleMask")
 	if .Titled in style && !window.custom_title_bar {
-		// Full-size content lets the Vulkan drawable cover the title bar during
-		// the reveal. Keep the client rectangle and Metal layer on this window.
+		// Full-size content puts the title-bar area inside the clipped drawable.
+		// Preserve the client rectangle and reuse the existing Metal layer.
 		client := mac_content_rect(window)
 		if clipped {
 			style += {.FullSizeContentView}
