@@ -27,7 +27,7 @@ element_view :: proc(ui: ^UI, id: Element_ID) -> Element_View {
 @(private="package")
 make_element_view :: proc(ui: ^UI, id: Element_ID, element: ^Element) -> Element_View {
 	return {
-		ui, id, coordinate_window(element), element_bounds(element),
+		ui, id, element.window, element_bounds(element),
 		element.label, element.color, element.style, element.text_size,
 		element.text_align, element.text_weight, element.text_wrap, element.text_color,
 		element.surface, element.selected, ui.hovered == id, ui.pressed == id, ui.focused == id,
@@ -53,7 +53,7 @@ Pointer_Event :: struct {
 }
 Focus_Event :: struct {
 	focused: bool,
-	commit: bool, // Ordinary blur can commit. Deactivation and transfer cancel.
+	commit: bool, // Ordinary blur can commit. Hiding, removal, and transfer cancel.
 }
 Wheel_Event :: distinct f32 // Signed vertical wheel steps.
 Precise_Scroll_Event :: struct {

@@ -11,13 +11,11 @@ Bamboo :: struct {
 	paused: bool,
 }
 
-create_bamboo :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase)) {
+create_bamboo :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.bamboo
 	page.sidebar = app.sidebar
-	scene := fluid.create_scene(ui.window)
-	append(&entry.scenes, scene)
-	page.background = fluid.create_element(scene, {draw = draw_bamboo, behavior = {state = page}})
-	page.wind = elements.button(scene, {}, "Pause wind")
+	page.background = fluid.create_element(ui.window, {draw = draw_bamboo, behavior = {state = page}})
+	page.wind = elements.button(ui.window, {}, page.paused ? "Resume wind" : "Pause wind")
 	fluid.set_color(ui, page.wind, {20, 42, 32, 224})
 	fluid.set_style(ui, page.wind, {
 		radius = 0.625, border = {91, 121, 93, 200}, hover_border = {146, 179, 128, 255}, border_width = 0.0625,
@@ -25,6 +23,11 @@ create_bamboo :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase
 	fluid.on_press(ui, page.wind, page, toggle_bamboo_wind)
 	fluid.on_update(ui, page.background, page, update_bamboo)
 	update_bamboo(page, ui, 0)
+}
+
+leave_bamboo :: proc(app: ^Showcase, ui: ^fluid.UI) {
+	fluid.remove(ui, app.bamboo.background)
+	fluid.remove(ui, app.bamboo.wind)
 }
 
 update_bamboo :: proc(page: ^Bamboo, ui: ^fluid.UI, dt: f64) {

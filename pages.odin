@@ -2,15 +2,13 @@ package fluid
 
 import virtual "core:mem/virtual"
 
-// Pages own activation and lazy creation, not navigation layout or demo state.
+// Page callbacks build and remove their elements. The app owns page state.
 // Define the fixed list and bind every tab before opening the first page.
 Page :: struct($Owner: typeid) {
 	title:   string,
-	create:  proc(owner: ^Owner, ui: ^UI, page: ^Page(Owner)),
+	create:  proc(owner: ^Owner, ui: ^UI),
 	leave:   proc(owner: ^Owner, ui: ^UI),
 	tab:     Element_ID,
-	scenes:  [dynamic]^Scene,
-	created: bool,
 }
 
 Page_Set :: struct($Owner: typeid) {
@@ -37,7 +35,6 @@ bind_page_tab :: proc(pages: ^Page_Set($Owner), index: int, tab: Element_ID) {
 open_page :: proc(pages: ^Page_Set($Owner), index: int) {
 	assert(index >= 0 && index < len(pages.entries))
 	ui := pages.ui
-	context.allocator = virtual.arena_allocator(&ui.storage)
 	if previous, exists := pages.current.?; exists {
 		if previous == index {
 			return
@@ -46,20 +43,10 @@ open_page :: proc(pages: ^Page_Set($Owner), index: int) {
 		if page.leave != nil {
 			page.leave(pages.owner, ui)
 		}
-		for scene in page.scenes {
-			deactivate(scene)
-		}
 		set_selected(ui, page.tab, false)
 	}
 	page := &pages.entries[index]
-	if !page.created {
-		page.scenes = make([dynamic]^Scene)
-		page.create(pages.owner, ui, page)
-		page.created = true
-	}
-	for scene in page.scenes {
-		activate(scene)
-	}
+	page.create(pages.owner, ui)
 	pages.current = index
 	set_selected(ui, page.tab, true)
 }

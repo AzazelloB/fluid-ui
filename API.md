@@ -1,19 +1,25 @@
 # Importing Fluid UI
 
 The repository root is the engine package. It owns element IDs, geometry,
-scenes, windows, input routing, and drawing primitives. The optional
+windows, input routing, and drawing primitives. The optional
 `elements/` package builds reusable controls on that API. The standalone
 showcase at `examples/showcase/` imports both packages and supplies its own
 layout and presentation.
 
 ## Custom elements and styling
 
-Use `fluid.create_element` with an `Element_Definition` to construct an
-element directly. Set `pressable` for default click and keyboard activation,
+Use `fluid.create_element(window, definition)` to construct an element owned by
+a window. Set `pressable` for default click and keyboard activation,
 or supply an `Element_Behavior` to process routed input with your own state.
 The engine owns focus, pointer capture, and the lifetime of the element.
 It calls `release_graphics` before invalidating renderer or font resources
 and `destroy` when the element is removed.
+
+Use `set_hidden(ui, id)` to keep an element's ID, state, and draw order while
+pausing drawing, input, updates, and animation. Pass `false` to show it again.
+Hiding cancels focus and pointer interaction. `remove(ui, id)` destroys the
+element and invalidates its ID. A page can remove its elements on exit and
+create new ones from app-owned state when reopened.
 
 Use `fluid.set_draw` to replace drawing on an engine element or a stock
 control. The callback receives an `Element_View` with the current bounds,
@@ -69,7 +75,7 @@ handled by the platform window and Vulkan renderer.
 
 ```odin
 viewport := fluid.bounds(ui, ui.window.viewport)
-sidebar := elements.panel(scene, {
+sidebar := elements.panel(ui.window, {
     left = viewport.right - 18.75,
     top = 1.5,
     right = viewport.right - 2.25,
@@ -151,7 +157,8 @@ with normalized steps.
 ## Windows
 
 Bounds and pointer coordinates are window-local.
-`transfer` preserves the element ID, animation progress, and size in UI units.
+`transfer(ui, id, destination_window)` preserves the element ID, animation
+progress, and size in UI units.
 It rebases the element and animation origins to preserve their desktop positions.
 
 `pointer_position`, `set_window_size`, and window configuration use UI units

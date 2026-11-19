@@ -15,13 +15,13 @@ Title_Bar :: struct {
 	buttons: [elements.Caption_Button]fluid.Element_ID,
 }
 
-create_title_bar :: proc(bar: ^Title_Bar, scene: ^fluid.Scene) {
-	bar.drag = fluid.create_element(scene, {})
-	fluid.set_window_hit(scene.ui, bar.drag, .Drag)
-	bar.title = demo_text(scene, {}, SHOWCASE_TITLE, .Caption, INK, weight = .Bold)
-	bar.divider = elements.panel(scene, {}, EDGE)
+create_title_bar :: proc(bar: ^Title_Bar, window: ^fluid.Window) {
+	bar.drag = fluid.create_element(window, {})
+	fluid.set_window_hit(window.ui, bar.drag, .Drag)
+	bar.title = demo_text(window, {}, SHOWCASE_TITLE, .Caption, INK, weight = .Bold)
+	bar.divider = elements.panel(window, {}, EDGE)
 	for button in elements.Caption_Button {
-		bar.buttons[button] = elements.caption_button(scene, {}, button)
+		bar.buttons[button] = elements.caption_button(window, {}, button)
 	}
 }
 

@@ -19,7 +19,7 @@ UI :: struct {
 	drag:                              Drag,
 	vulkan:                            Vulkan,
 	elements:                          [dynamic]Element, // Stable registry indices; never reordered.
-	active:                            [dynamic]Element_ID, // Draw order and processing membership.
+	order:                             [dynamic]Element_ID, // Back-to-front element order.
 	events:                            [dynamic]Element_ID, // Mouse-down presses in the current frame.
 	storage:                           virtual.Arena,
 	live_frame_storage:                ^virtual.Arena,
@@ -51,7 +51,7 @@ init :: proc(app: ^UI, config: Config) -> bool {
 	app.arena_ready = true
 	context.allocator = virtual.arena_allocator(&app.storage)
 	app.elements = make([dynamic]Element, 0, 64)
-	app.active = make([dynamic]Element_ID, 0, 64)
+	app.order = make([dynamic]Element_ID, 0, 64)
 	app.events = make([dynamic]Element_ID)
 	app.windows = make([dynamic]^Window)
 	app.free_windows = make([dynamic]^Window)

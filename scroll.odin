@@ -32,14 +32,14 @@ Scroll_State :: struct {
 	drawn_at: u64,
 }
 
-create_scroll_view :: proc(scene: ^Scene, definition: Scroll_View_Definition) -> Element_ID {
+create_scroll_view :: proc(window: ^Window, definition: Scroll_View_Definition) -> Element_ID {
 	assert(definition.draw != nil)
 	state := new(Scroll_State, os.heap_allocator())
 	state^ = {
 		data = definition.state, draw = definition.draw, release_graphics = definition.release_graphics,
 		unit_height = 1, stick_to_end = definition.stick_to_end, following = definition.stick_to_end,
 	}
-	return create_element(scene, {
+	return create_element(window, {
 		pins = definition.pins, color = definition.color, style = definition.style,
 		surface = true, focusable = true, draw = draw_scroll_view,
 		behavior = {

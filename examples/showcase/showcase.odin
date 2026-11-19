@@ -20,27 +20,25 @@ Showcase :: struct {
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	// Adding or removing a demo changes this list and its typed state field.
 	definitions := [?]fluid.Page(Showcase){
-		{title = "Rectangles", create = create_rectangles},
-		{title = "Transitions", create = create_conversations},
+		{title = "Rectangles", create = create_rectangles, leave = leave_rectangles},
+		{title = "Transitions", create = create_conversations, leave = leave_conversations},
 		{title = "Docking", create = create_docking, leave = leave_docking},
 		{title = "Catalog", create = create_catalog, leave = leave_catalog},
-		{title = "Controls", create = create_controls},
-		{title = "Logs", create = create_logs},
-		{title = "Bamboo Forest", create = create_bamboo},
+		{title = "Controls", create = create_controls, leave = leave_controls},
+		{title = "Logs", create = create_logs, leave = leave_logs},
+		{title = "Bamboo Forest", create = create_bamboo, leave = leave_bamboo},
 	}
 	fluid.create_pages(&app.pages, ui, app, definitions[:])
 	start_launch_reveal(&app.launch, ui.window)
-	navigation := fluid.create_scene(ui.window)
-	app.sidebar = elements.panel(navigation, {}, {21, 29, 40, 255})
-	create_title_bar(&app.title_bar, navigation)
+	app.sidebar = elements.panel(ui.window, {}, {21, 29, 40, 255})
+	create_title_bar(&app.title_bar, ui.window)
 	for page, index in app.pages.entries {
-		tab := elements.button(navigation, {}, page.title, .Secondary)
+		tab := elements.button(ui.window, {}, page.title, .Secondary)
 		fluid.set_text_style(ui, tab, .Body, INK)
 		fluid.bind_page_tab(&app.pages, index, tab)
 	}
 	update_navigation(app, ui, 0)
 	fluid.on_update(ui, app.sidebar, app, update_navigation)
-	fluid.activate(navigation)
 	fluid.open_page(&app.pages, 0)
 }
 

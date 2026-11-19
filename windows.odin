@@ -15,13 +15,12 @@ Config :: struct {
 	background:   Maybe(Color),
 }
 
-// Window and Scene pointers expire on close. Transfer elements before closing
+// Window pointers expire on close. Transfer elements before closing
 // their window to preserve their IDs; remaining IDs are invalidated on close.
 Window :: struct {
 	ui:               ^UI,
 	viewport:         Element_ID,
 	background:       Color,
-	scenes:           [dynamic]^Scene,
 	close_requested:  bool,
 	effect:           Window_Effect,
 	clip:             Maybe(Window_Circle),
@@ -56,7 +55,6 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 		return nil
 	}
 	allocator := virtual.arena_allocator(&window.storage)
-	window.scenes = make([dynamic]^Scene, allocator)
 	success := false
 	defer {
 		if !success {
@@ -84,7 +82,7 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 		return nil
 	}
 	window.open = true
-	window.viewport = register_element(app, Element{space = window})
+	window.viewport = register_element(app, Element{window = window})
 	append(&app.windows, window)
 	success = true
 	if .Hidden in config.flags {
@@ -96,16 +94,17 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 	return window
 }
 
-// Scenes are deactivated and graphics resources released before the window closes.
+// Elements and graphics resources are released before the window closes.
 // Transfer any elements you want to keep using before closing their window.
 close_window :: proc(window: ^Window) {
 	if !window.open {
 		return
 	}
 	app := window.ui
-	for scene in window.scenes {
-		for len(scene.members) > 0 {
-			remove(app, scene.members[len(scene.members) - 1])
+	for index := len(app.order) - 1; index >= 0; index -= 1 {
+		id := app.order[index]
+		if element_window(app, id) == window {
+			remove(app, id)
 		}
 	}
 	cancel_window_effect(window)
@@ -273,4 +272,28 @@ set_window_clip :: proc(window: ^Window, circle: Maybe(Window_Circle)) -> bool {
 	}
 	window.clip = circle
 	return true
+}
+
+// Move the actual element, keeping its ID and animation progress.
+// Literal positions and animation origins are rebased to preserve screen space.
+transfer :: proc(app: ^UI, id: Element_ID, destination: ^Window) {
+	assert(destination.ui == app && destination.open)
+	element := get_element(app, id)
+	source := element.window
+	assert(id != source.viewport)
+	assert(source.open, "Transfer elements before closing their window")
+	if source == destination {
+		return
+	}
+	element.pins = transfer_pins(source, destination, element.pins)
+	element.motion.from = transfer_pins(source, destination, element.motion.from)
+	detach_input(app, id)
+	release_element_text(element)
+	element.window = destination
+}
+
+@(private="file")
+transfer_pins :: proc(source, destination: ^Window, pins: Pins) -> Pins {
+	origin := [2]f32{pins.left, pins.top}
+	return translated(pins, window_point(destination, desktop_point(source, origin)) - origin)
 }

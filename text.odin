@@ -128,9 +128,10 @@ release_cached_text :: proc(cache: ^^Text) {
 
 @(private="package")
 release_window_text :: proc(window: ^Window) {
-	for scene in window.scenes {
-		for id in scene.members {
-			release_element_text(get_element(window.ui, id))
+	for id in window.ui.order {
+		element := get_element(window.ui, id)
+		if element.window == window {
+			release_element_text(element)
 		}
 	}
 }

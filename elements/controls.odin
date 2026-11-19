@@ -109,7 +109,7 @@ get_element :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> Control_View {
 }
 
 @(private="package")
-create_control :: proc(scene: ^fluid.Scene, pins: fluid.Pins, label: string, state: Control_State, cursor: fluid.Cursor = .Default) -> fluid.Element_ID {
+create_control :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string, state: Control_State, cursor: fluid.Cursor = .Default) -> fluid.Element_ID {
 	control := new(Control, os.heap_allocator())
 	control.state = state
 	definition := button_definition(pins, label)
@@ -125,7 +125,7 @@ create_control :: proc(scene: ^fluid.Scene, pins: fluid.Pins, label: string, sta
 		destroy = destroy_control,
 	}
 	definition.draw = draw_control
-	return fluid.create_element(scene, definition)
+	return fluid.create_element(window, definition)
 }
 
 on_change :: proc(ui: ^fluid.UI, id: fluid.Element_ID, owner: ^$Owner,
@@ -144,33 +144,33 @@ emit_change :: proc(ui: ^fluid.UI, id: fluid.Element_ID, value: Control_Value) {
 	}
 }
 
-toggle :: proc(scene: ^fluid.Scene, pins: fluid.Pins, label: string, value: bool) -> fluid.Element_ID {
-	id := create_control(scene, pins, label, Toggle_Control{})
-	fluid.set_selected(scene.ui, id, value)
+toggle :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string, value: bool) -> fluid.Element_ID {
+	id := create_control(window, pins, label, Toggle_Control{})
+	fluid.set_selected(window.ui, id, value)
 	return id
 }
 
-dangerous_button :: proc(scene: ^fluid.Scene, pins: fluid.Pins, label: string) -> fluid.Element_ID {
-	return create_control(scene, pins, label, Guard_Control{})
+dangerous_button :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string) -> fluid.Element_ID {
+	return create_control(window, pins, label, Guard_Control{})
 }
 
-options :: proc(scene: ^fluid.Scene, pins: fluid.Pins, labels: []string, selected: int) -> fluid.Element_ID {
-	return choice_control(scene, pins, labels, selected, false)
+options :: proc(window: ^fluid.Window, pins: fluid.Pins, labels: []string, selected: int) -> fluid.Element_ID {
+	return choice_control(window, pins, labels, selected, false)
 }
 
-select :: proc(scene: ^fluid.Scene, pins: fluid.Pins, labels: []string, selected: int) -> fluid.Element_ID {
-	return choice_control(scene, pins, labels, selected, true)
+select :: proc(window: ^fluid.Window, pins: fluid.Pins, labels: []string, selected: int) -> fluid.Element_ID {
+	return choice_control(window, pins, labels, selected, true)
 }
 
 @(private="file")
-choice_control :: proc(scene: ^fluid.Scene, pins: fluid.Pins, labels: []string, selected: int, neighbors: bool) -> fluid.Element_ID {
+choice_control :: proc(window: ^fluid.Window, pins: fluid.Pins, labels: []string, selected: int, neighbors: bool) -> fluid.Element_ID {
 	assert(selected >= 0 && selected < len(labels))
 	allocator := os.heap_allocator()
 	items := make([]Choice_Item, len(labels), allocator)
 	for label, i in labels {
 		items[i].label = strings.clone(label, allocator)
 	}
-	return create_control(scene, pins, "", Choice_Control{items = items, neighbors = neighbors, selected = selected, preview = selected})
+	return create_control(window, pins, "", Choice_Control{items = items, neighbors = neighbors, selected = selected, preview = selected})
 }
 
 set_choice :: proc(ui: ^fluid.UI, id: fluid.Element_ID, selected: int) {
@@ -191,7 +191,7 @@ show_choice :: proc(choice: ^Choice_Control, index: int) {
 	choice.preview = index
 }
 
-number_input :: proc(scene: ^fluid.Scene, pins: fluid.Pins, value: f64, options: Number_Options = {}) -> fluid.Element_ID {
+number_input :: proc(window: ^fluid.Window, pins: fluid.Pins, value: f64, options: Number_Options = {}) -> fluid.Element_ID {
 	if low, bounded := options.minimum.?; bounded {
 		assert(!math.is_nan(low) && !math.is_inf(low))
 	}
@@ -207,8 +207,8 @@ number_input :: proc(scene: ^fluid.Scene, pins: fluid.Pins, value: f64, options:
 	if settings.step <= 0 || math.is_nan(settings.step) || math.is_inf(settings.step) {
 		settings.step = 1
 	}
-	id := create_control(scene, pins, "", Number_Control{options = settings}, .Resize_Horizontal)
-	set_number(scene.ui, id, value)
+	id := create_control(window, pins, "", Number_Control{options = settings}, .Resize_Horizontal)
+	set_number(window.ui, id, value)
 	return id
 }
 
@@ -253,26 +253,26 @@ propose_number :: proc(ui: ^fluid.UI, id: fluid.Element_ID, number: ^Number_Cont
 	}
 }
 
-text_input :: proc(scene: ^fluid.Scene, pins: fluid.Pins, value: string, placeholder: string = "") -> fluid.Element_ID {
-	return text_control(scene, pins, value, placeholder, false)
+text_input :: proc(window: ^fluid.Window, pins: fluid.Pins, value: string, placeholder: string = "") -> fluid.Element_ID {
+	return text_control(window, pins, value, placeholder, false)
 }
 
-text_area :: proc(scene: ^fluid.Scene, pins: fluid.Pins, value: string, placeholder: string = "") -> fluid.Element_ID {
-	return text_control(scene, pins, value, placeholder, true)
+text_area :: proc(window: ^fluid.Window, pins: fluid.Pins, value: string, placeholder: string = "") -> fluid.Element_ID {
+	return text_control(window, pins, value, placeholder, true)
 }
 
 @(private="file")
-text_control :: proc(scene: ^fluid.Scene, pins: fluid.Pins, value, placeholder: string, multiline: bool) -> fluid.Element_ID {
-	id := create_control(scene, pins, "", Text_Control{
+text_control :: proc(window: ^fluid.Window, pins: fluid.Pins, value, placeholder: string, multiline: bool) -> fluid.Element_ID {
+	id := create_control(window, pins, "", Text_Control{
 		placeholder = strings.clone(placeholder, os.heap_allocator()),
 		multiline = multiline,
 	}, .Text)
-	fluid.set_style(scene.ui, id, {
+	fluid.set_style(window.ui, id, {
 		radius = 0.375, border = {64, 77, 94, 255}, border_width = 0.0625,
 		hover_border = {98, 112, 129, 255},
 	})
-	fluid.set_text_style(scene.ui, id, align = .Left)
-	set_text_value(scene.ui, id, value)
+	fluid.set_text_style(window.ui, id, align = .Left)
+	set_text_value(window.ui, id, value)
 	return id
 }
 

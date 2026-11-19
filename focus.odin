@@ -42,12 +42,12 @@ change_focus :: proc(ui: ^UI, id: Element_ID, commit: bool) {
 
 @(private="package")
 focus_next :: proc(ui: ^UI, window: ^Window, backwards: bool) {
-	count := len(ui.active)
+	count := len(ui.order)
 	if count == 0 {
 		return
 	}
 	index := backwards ? 0 : count - 1
-	for id, i in ui.active {
+	for id, i in ui.order {
 		if id == ui.focused {
 			index = i
 			break
@@ -56,10 +56,10 @@ focus_next :: proc(ui: ^UI, window: ^Window, backwards: bool) {
 	step := backwards ? -1 : 1
 	for _ in 0..<count {
 		index = (index + step + count) % count
-		id := ui.active[index]
+		id := ui.order[index]
 		element := get_element(ui, id)
 		r := element_bounds(element)
-		if coordinate_window(element) == window && can_focus(element) && width(r) > 0 && height(r) > 0 {
+		if element.window == window && !element.hidden && can_focus(element) && width(r) > 0 && height(r) > 0 {
 			change_focus(ui, id, true)
 			return
 		}

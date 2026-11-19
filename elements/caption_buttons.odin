@@ -13,17 +13,17 @@ Caption_State :: struct {
 }
 
 // The application supplies the button's position and hit area.
-caption_button :: proc(scene: ^fluid.Scene, pins: fluid.Pins, button: Caption_Button) -> fluid.Element_ID {
+caption_button :: proc(window: ^fluid.Window, pins: fluid.Pins, button: Caption_Button) -> fluid.Element_ID {
 	state := new(Caption_State, os.heap_allocator())
 	state.button = button
-	id := fluid.create_element(scene, {
+	id := fluid.create_element(window, {
 		pins = pins,
 		draw = draw_caption_button,
 		behavior = {state = state, input = caption_input, destroy = destroy_caption},
 	})
 	when ODIN_OS == .Windows {
 		if button == .Maximize {
-			fluid.set_window_hit(scene.ui, id, .Maximize)
+			fluid.set_window_hit(window.ui, id, .Maximize)
 		}
 	}
 	return id

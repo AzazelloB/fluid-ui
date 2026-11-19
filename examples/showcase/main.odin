@@ -1,9 +1,19 @@
 package main
 
+import "core:os"
 import fluid "../.."
 
 main :: proc() {
-	app: Showcase
+	app := Showcase{controls = {size_index = 1, number_value = 42, price_value = 25, pixels_value = 16}}
+	defer {
+		allocator := os.heap_allocator()
+		delete(app.controls.name_value.? or_else "", allocator)
+		delete(app.controls.notes_value.? or_else "", allocator)
+		delete(app.conversations.draft, allocator)
+		for title in app.conversations.titles {
+			delete(title, allocator)
+		}
+	}
 	fluid.run({
 		title = SHOWCASE_TITLE,
 		size = {62.5, 43.75 + TITLE_BAR_HEIGHT},

@@ -16,10 +16,11 @@ Element_Definition :: struct {
 
 // The engine owns the element and copies its label. An attached behavior can
 // supply its own state, event handling, and resource cleanup.
-create_element :: proc(scene: ^Scene, definition: Element_Definition) -> Element_ID {
-	app := scene.ui
+create_element :: proc(window: ^Window, definition: Element_Definition) -> Element_ID {
+	assert(window.open)
+	app := window.ui
 	element := Element{
-		owner = scene,
+		window = window,
 		pins = checked_pins(definition.pins),
 		label = strings.clone(definition.label, os.heap_allocator()),
 		color = definition.color,
@@ -34,10 +35,7 @@ create_element :: proc(scene: ^Scene, definition: Element_Definition) -> Element
 		draw = definition.draw,
 	}
 	id := register_element(app, element)
-	append(&scene.members, id)
-	if scene.active {
-		append(&app.active, id)
-	}
+	append(&app.order, id)
 	return id
 }
 
@@ -56,10 +54,8 @@ set_label :: proc(app: ^UI, id: Element_ID, text: string) {
 // Invalidate the ID before recycling its slot. Other elements store values.
 remove :: proc(app: ^UI, id: Element_ID) {
 	element := get_element(app, id)
-	if element.owner != nil {
-		remove_id(&element.owner.members, id)
-	}
-	deactivate_element(app, id)
+	clear_element_input(app, id)
+	remove_id(&app.order, id)
 	remove_id(&app.events, id)
 	release_element_text(element)
 	if element.behavior.destroy != nil {
@@ -94,15 +90,7 @@ set_target :: proc(app: ^UI, id: Element_ID, pins: Pins) {
 }
 
 element_window :: proc(app: ^UI, id: Element_ID) -> ^Window {
-	return coordinate_window(get_element(app, id))
-}
-
-@(private="package")
-coordinate_window :: proc(element: ^Element) -> ^Window {
-	if element.owner != nil {
-		return element.owner.window
-	}
-	return element.space
+	return get_element(app, id).window
 }
 
 set_style :: proc(app: ^UI, id: Element_ID, style: Style) {
@@ -126,4 +114,58 @@ set_text_style :: proc(app: ^UI, id: Element_ID, size: Text_Size = .Body,
 // Wrapped text starts at the top of its bounds and is clipped to them.
 set_text_wrap :: proc(app: ^UI, id: Element_ID, wrap: bool = true) {
 	get_element(app, id).text_wrap = wrap
+}
+
+// Hidden elements keep their state and draw order, and pause input and updates.
+set_hidden :: proc(app: ^UI, id: Element_ID, hidden: bool = true) {
+	element := get_element(app, id)
+	assert(id != element.window.viewport)
+	if element.hidden == hidden {
+		return
+	}
+	element.hidden = hidden
+	if hidden {
+		remove_id(&app.events, id)
+		clear_element_input(app, id)
+	}
+}
+
+is_active :: proc(app: ^UI, id: Element_ID) -> bool {
+	if !valid(app, id) {
+		return false
+	}
+	element := get_element(app, id)
+	return id != element.window.viewport && !element.hidden
+}
+
+@(private="package")
+clear_element_input :: proc(app: ^UI, id: Element_ID) {
+	detach_input(app, id)
+	if app.hovered == id {
+		app.hovered = NO_ELEMENT
+	}
+	if app.pressed == id {
+		app.pressed = NO_ELEMENT
+	}
+	if app.drag.element == id {
+		end_drag(app)
+	}
+}
+
+bring_to_front :: proc(app: ^UI, id: Element_ID) {
+	if !valid(app, id) || id == element_window(app, id).viewport {
+		return
+	}
+	remove_id(&app.order, id)
+	append(&app.order, id)
+}
+
+@(private="package")
+remove_id :: proc(ids: ^[dynamic]Element_ID, id: Element_ID) {
+	for value, i in ids^ {
+		if value == id {
+			ordered_remove(ids, i)
+			return
+		}
+	}
 }

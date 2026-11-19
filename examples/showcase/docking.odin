@@ -10,39 +10,41 @@ DOCK_COLOR :: fluid.Color{32, 47, 59, 255}
 DOCK_HIGHLIGHT :: fluid.Color{42, 85, 77, 255}
 
 Docking :: struct {
-	targets, card_scene:         ^fluid.Scene,
 	area, card, placement:      fluid.Element_ID,
 	navigation:                 fluid.Element_ID,
 	docked:                     Maybe(Dock),
 	zones:                      [Dock]fluid.Element_ID,
-	floating_scene:             ^fluid.Scene,
+	floating_window:            ^fluid.Window,
+	free_position:              Maybe([2]f32),
 	grab:                       [2]f32,
 	drag_origin:                [2]f32,
 	drag_moved:                 bool,
 	detach_failed:              bool,
 }
 
-create_docking :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase)) {
+create_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.docking
 	page.navigation = app.sidebar
-	scene := fluid.create_scene(ui.window)
-	page.targets = fluid.create_scene(ui.window)
-	page.card_scene = fluid.create_scene(ui.window)
-	append(&entry.scenes, scene, page.card_scene)
-	page.area = demo_surface(scene, {}, radius = 1.25)
-	page.placement = elements.options(scene, {}, {"Free", "Left", "Right", "Bottom"}, 0)
+	page.area = demo_surface(ui.window, {}, radius = 1.25)
+	page.placement = elements.options(ui.window, {}, {"Free", "Left", "Right", "Bottom"}, 0)
 	elements.on_change(ui, page.placement, page, choose_dock)
 	labels := [Dock]string{.Left = "Left", .Right = "Right", .Bottom = "Bottom"}
 	for dock in Dock {
-		page.zones[dock] = demo_surface(page.targets, {}, DOCK_COLOR)
+		page.zones[dock] = demo_surface(ui.window, {}, DOCK_COLOR)
+		fluid.set_hidden(ui, page.zones[dock])
 		fluid.set_label(ui, page.zones[dock], labels[dock])
 		fluid.set_text_style(ui, page.zones[dock], .Body, MUTED)
 	}
 	layout_docking(page, ui, showcase_body(ui))
 	area := fluid.bounds(ui, page.area)
-	page.card = elements.draggable_panel(page.card_scene, card_at({area.left + 12.25, area.top + 4}), {54, 103, 91, 255})
+	position := page.free_position.? or_else [2]f32{area.left + 12.25, area.top + 4}
+	page.card = elements.draggable_panel(ui.window, card_at(position), {54, 103, 91, 255})
 	fluid.set_label(ui, page.card, "Drag")
 	fluid.set_style(ui, page.card, {radius = 1, border = {120, 188, 161, 255}, border_width = 0.0625, shadow = 1})
+	if dock, docked := page.docked.?; docked {
+		show_dock_choice(page, ui, dock)
+		fluid.set_layout(ui, page.card, fluid.bounds(ui, page.zones[dock]))
+	}
 	fluid.on_update(ui, page.area, page, update_docking)
 }
 
@@ -51,12 +53,12 @@ card_at :: proc(position: [2]f32) -> fluid.Pins {
 }
 
 fill_floating_window :: proc(page: ^Docking, ui: ^fluid.UI) {
-	fluid.set_layout(ui, page.card, fluid.bounds(ui, page.floating_scene.window.viewport))
+	fluid.set_layout(ui, page.card, fluid.bounds(ui, page.floating_window.viewport))
 }
 
 move_floating_window :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) -> bool {
 	// Use desktop coordinates and the original grab point, never a position delta.
-	window := page.floating_scene.window
+	window := page.floating_window
 	grab := page.grab * (fluid.window_scale(window) / fluid.UI_UNIT_POINTS)
 	position := fluid.desktop_point(ui.window, mouse) - grab
 	if !fluid.set_window_position(window, position) {
@@ -68,7 +70,7 @@ move_floating_window :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) -> bo
 }
 
 detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
-	if page.floating_scene == nil {
+	if page.floating_window == nil {
 		window := fluid.create_window(ui, {
 			title = "Fluid card",
 			size = CARD_SIZE,
@@ -79,12 +81,11 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 			page.detach_failed = true
 			return
 		}
-		page.floating_scene = fluid.create_scene(window)
-		fluid.activate(page.floating_scene)
+		page.floating_window = window
 	}
 	// Reuse the window if the same drag briefly brought the card back inside.
-	window := page.floating_scene.window
-	fluid.transfer(ui, page.card, page.floating_scene)
+	window := page.floating_window
+	fluid.transfer(ui, page.card, page.floating_window)
 	if !move_floating_window(page, ui, mouse) {
 		page.detach_failed = true
 		return_card(page, ui)
@@ -98,19 +99,23 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 }
 
 return_card :: proc(page: ^Docking, ui: ^fluid.UI) {
-	if page.floating_scene == nil {
+	if page.floating_window == nil {
 		return
 	}
-	fluid.transfer(ui, page.card, page.card_scene)
-	fluid.close_window(page.floating_scene.window)
-	page.floating_scene = nil
+	fluid.transfer(ui, page.card, ui.window)
+	fluid.close_window(page.floating_window)
+	page.floating_window = nil
 }
 
 dock_card :: proc(page: ^Docking, ui: ^fluid.UI, dock: Dock) {
 	page.docked = dock
+	show_dock_choice(page, ui, dock)
+	fluid.animate_to(ui, page.card, fluid.bounds(ui, page.zones[dock]), damped_animation(0.4))
+}
+
+show_dock_choice :: proc(page: ^Docking, ui: ^fluid.UI, dock: Dock) {
 	elements.set_choice(ui, page.placement, int(dock) + 1)
 	fluid.set_label(ui, page.card, dock == .Bottom ? "Horizontal card" : "Vertical card")
-	fluid.animate_to(ui, page.card, fluid.bounds(ui, page.zones[dock]), damped_animation(0.4))
 }
 
 reset_card :: proc(page: ^Docking, ui: ^fluid.UI) {
@@ -135,10 +140,26 @@ choose_dock :: proc(page: ^Docking, ui: ^fluid.UI, change: elements.Control_Chan
 leave_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.docking
 	// The detached window belongs to this demo; return its card before closing.
-	if page.floating_scene != nil {
+	if page.floating_window != nil {
 		reset_card(page, ui)
 	}
-	fluid.deactivate(page.targets)
+	bounds := fluid.bounds(ui, page.card)
+	page.free_position = nil
+	if page.docked == nil {
+		page.free_position = [2]f32{bounds.left, bounds.top}
+	}
+	for id in ([]fluid.Element_ID{page.area, page.card, page.placement}) {
+		fluid.remove(ui, id)
+	}
+	for id in page.zones {
+		fluid.remove(ui, id)
+	}
+}
+
+hide_docking_targets :: proc(page: ^Docking, ui: ^fluid.UI, hidden: bool) {
+	for id in page.zones {
+		fluid.set_hidden(ui, id, hidden)
+	}
 }
 
 layout_docking :: proc(page: ^Docking, ui: ^fluid.UI, viewport: fluid.Pins) {
@@ -164,13 +185,13 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		if dock, ok := page.docked.?; ok {
 			fluid.set_target(ui, page.card, fluid.bounds(ui, page.zones[dock]))
 		}
-		if page.floating_scene != nil {
+		if page.floating_window != nil {
 			fill_floating_window(page, ui)
 		}
 	}
-	if page.floating_scene != nil && page.floating_scene.window.close_requested {
+	if page.floating_window != nil && page.floating_window.close_requested {
 		reset_card(page, ui)
-		fluid.deactivate(page.targets)
+		hide_docking_targets(page, ui, true)
 		return
 	}
 	if fluid.drag_started(ui, page.card) {
@@ -190,18 +211,18 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		fluid.set_layout(ui, page.card, card_at(position))
 		fluid.set_label(ui, page.card, "Drag")
 		fluid.rebase_drag(ui, page.card)
-		if page.floating_scene != nil && owner == page.floating_scene.window {
+		if page.floating_window != nil && owner == page.floating_window {
 			if !fluid.set_window_size(owner, CARD_SIZE) {
 				fmt.eprintln("Cannot resize floating window")
 			}
 		}
-		fluid.activate(page.targets)
+		hide_docking_targets(page, ui, false)
 		fluid.bring_to_front(ui, page.card)
 	}
 	if !in_drag {
 		return
 	}
-	defer if dropped { fluid.deactivate(page.targets) }
+	defer if dropped { hide_docking_targets(page, ui, true) }
 	mouse := fluid.pointer_position(ui.window)
 	page.drag_moved = page.drag_moved || mouse != page.drag_origin
 	r := card_at(mouse - page.grab)
@@ -217,13 +238,13 @@ update_docking :: proc(page: ^Docking, ui: ^fluid.UI, dt: f64) {
 		fluid.set_color(ui, page.zones[dock], over ? DOCK_HIGHLIGHT : DOCK_COLOR)
 	}
 	dock_on_drop := dropped && selected != nil
-	card_is_floating := page.floating_scene != nil && fluid.element_window(ui, page.card) == page.floating_scene.window
+	card_is_floating := page.floating_window != nil && fluid.element_window(ui, page.card) == page.floating_window
 	if page.drag_moved && card_is_floating && (card_fits || dock_on_drop) {
-		fluid.transfer(ui, page.card, page.card_scene)
+		fluid.transfer(ui, page.card, ui.window)
 		fluid.set_layout(ui, page.card, r)
 		fluid.rebase_drag(ui, page.card)
 		// Keep the source window alive until release so mouse capture survives.
-		_ = fluid.hide_window(page.floating_scene.window)
+		_ = fluid.hide_window(page.floating_window)
 		card_is_floating = false
 	}
 	if card_is_floating {

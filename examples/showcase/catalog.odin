@@ -50,41 +50,39 @@ Catalog :: struct {
 
 CATALOG_DURATION :: 0.52
 
-create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase)) {
+create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	catalog := &app.catalog
 	catalog.navigation = app.sidebar
-	scene := fluid.create_scene(ui.window)
-	append(&entry.scenes, scene)
-	catalog.scrim = elements.panel(scene, {}, {})
+	catalog.scrim = elements.panel(ui.window, {}, {})
 	fluid.set_pointer_behavior(ui, catalog.scrim, .Block)
-	catalog.back = elements.button(scene, {}, "‹ Back")
+	catalog.back = elements.button(ui.window, {}, "‹ Back")
 	fluid.set_style(ui, catalog.back, {radius = 1.25})
 	fluid.on_press(ui, catalog.back, catalog, close_catalog_card)
 
 	for product, index in CATALOG_PRODUCTS {
 		card := &catalog.cards[index]
-		card.parts[.Surface] = elements.button(scene, {}, "")
+		card.parts[.Surface] = elements.button(ui.window, {}, "")
 		fluid.set_color(ui, card.parts[.Surface], SURFACE)
 		fluid.set_draw(ui, card.parts[.Surface], fluid.draw_default)
 		fluid.on_press(ui, card.parts[.Surface], catalog, open_catalog_card)
-		card.parts[.Backdrop] = elements.panel(scene, {}, product.backdrop)
-		card.parts[.Shell] = elements.panel(scene, {}, product.shell)
-		card.parts[.Grille] = elements.panel(scene, {}, product.grille)
+		card.parts[.Backdrop] = elements.panel(ui.window, {}, product.backdrop)
+		card.parts[.Shell] = elements.panel(ui.window, {}, product.shell)
+		card.parts[.Grille] = elements.panel(ui.window, {}, product.grille)
 		for slot in Catalog_Part.Slot_Top..=Catalog_Part.Slot_Bottom {
-			card.parts[slot] = elements.panel(scene, {}, product.shell)
+			card.parts[slot] = elements.panel(ui.window, {}, product.shell)
 		}
-		card.parts[.Light] = elements.panel(scene, {}, product.accent)
-		card.parts[.Name] = demo_text(scene, {}, product.name, .Heading, weight = .Bold)
-		card.parts[.Finish] = demo_text(scene, {}, product.finish, .Caption, MUTED)
-		card.parts[.Price] = demo_text(scene, {}, product.price, align = .Right)
-		card.parts[.Description] = demo_text(scene, {}, product.description, .Body, {183, 194, 209, 255})
+		card.parts[.Light] = elements.panel(ui.window, {}, product.accent)
+		card.parts[.Name] = demo_text(ui.window, {}, product.name, .Heading, weight = .Bold)
+		card.parts[.Finish] = demo_text(ui.window, {}, product.finish, .Caption, MUTED)
+		card.parts[.Price] = demo_text(ui.window, {}, product.price, align = .Right)
+		card.parts[.Description] = demo_text(ui.window, {}, product.description, .Body, {183, 194, 209, 255})
 		fluid.set_text_wrap(ui, card.parts[.Description])
 
 		card.specs = {
-			demo_text(scene, {}, "BATTERY", .Caption, MUTED),
-			demo_text(scene, {}, product.battery, weight = .Bold),
-			demo_text(scene, {}, "WEIGHT", .Caption, MUTED),
-			demo_text(scene, {}, product.weight, weight = .Bold),
+			demo_text(ui.window, {}, "BATTERY", .Caption, MUTED),
+			demo_text(ui.window, {}, product.battery, weight = .Bold),
+			demo_text(ui.window, {}, "WEIGHT", .Caption, MUTED),
+			demo_text(ui.window, {}, product.weight, weight = .Bold),
 		}
 	}
 	fluid.on_update(ui, catalog.scrim, catalog, update_catalog)
@@ -117,7 +115,16 @@ leave_catalog :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	catalog.selected = nil
 	catalog.opening = false
 	catalog.reveal = 0
-	update_catalog(catalog, ui, 0)
+	fluid.remove(ui, catalog.scrim)
+	fluid.remove(ui, catalog.back)
+	for card in catalog.cards {
+		for id in card.parts {
+			fluid.remove(ui, id)
+		}
+		for id in card.specs {
+			fluid.remove(ui, id)
+		}
+	}
 }
 
 CATALOG_ART_HEIGHT :: 9.5

@@ -10,20 +10,20 @@ SURFACE :: fluid.Color{24, 33, 45, 255}
 EDGE :: fluid.Color{46, 60, 77, 255}
 
 // Shared presentation helpers; each demo owns its layout and behavior.
-demo_text :: proc(scene: ^fluid.Scene, pins: fluid.Pins, text: string,
+demo_text :: proc(window: ^fluid.Window, pins: fluid.Pins, text: string,
 	font: fluid.Text_Size = .Body, color: fluid.Color = INK, align: fluid.Text_Align = .Left,
 	weight: fluid.Text_Weight = .Regular,
 ) -> fluid.Element_ID {
-	id := elements.label(scene, pins, text)
-	fluid.set_text_style(scene.ui, id, font, color, align, weight)
+	id := elements.label(window, pins, text)
+	fluid.set_text_style(window.ui, id, font, color, align, weight)
 	return id
 }
 
-demo_surface :: proc(scene: ^fluid.Scene, pins: fluid.Pins, color: fluid.Color = SURFACE,
+demo_surface :: proc(window: ^fluid.Window, pins: fluid.Pins, color: fluid.Color = SURFACE,
 	radius: f32 = 1,
 ) -> fluid.Element_ID {
-	id := elements.panel(scene, pins, color)
-	fluid.set_style(scene.ui, id, {radius = radius, border = EDGE, border_width = 0.0625})
+	id := elements.panel(window, pins, color)
+	fluid.set_style(window.ui, id, {radius = radius, border = EDGE, border_width = 0.0625})
 	return id
 }
 

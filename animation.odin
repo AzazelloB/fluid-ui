@@ -18,11 +18,11 @@ animate_to :: proc(ui: ^UI, id: Element_ID, pins: Pins, animation: Animation) {
 
 @(private="package")
 advance_animations :: proc(ui: ^UI, dt: f64) {
-	// Inactive elements pause automatically; activation needs no scheduler wiring.
-	for id in ui.active {
+	// Hidden elements pause until shown again.
+	for id in ui.order {
 		element := get_element(ui, id)
 		motion := &element.motion
-		if motion.animation.sample == nil || motion.frame == ui.frame {
+		if element.hidden || motion.animation.sample == nil || motion.frame == ui.frame {
 			continue
 		}
 		motion.elapsed = min(motion.animation.duration, motion.elapsed + max(dt, 0))

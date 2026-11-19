@@ -48,7 +48,7 @@ on_update :: proc(ui: ^UI, id: Element_ID, owner: ^$Owner, run: proc(owner: ^Own
 @(private="package")
 dispatch_behavior :: proc(ui: ^UI, dt: f64) {
 	// Snapshot IDs: callbacks may remove elements, create windows, or navigate.
-	active := slice.clone(ui.active[:], context.temp_allocator)
+	order := slice.clone(ui.order[:], context.temp_allocator)
 	events := slice.clone(ui.events[:], context.temp_allocator)
 	for id in events {
 		if !is_active(ui, id) {
@@ -62,7 +62,7 @@ dispatch_behavior :: proc(ui: ^UI, dt: f64) {
 			return
 		}
 	}
-	for id in active {
+	for id in order {
 		if !is_active(ui, id) {
 			continue
 		}

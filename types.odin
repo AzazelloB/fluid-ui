@@ -52,7 +52,7 @@ Motion :: struct {
 Element :: struct {
 	generation:    u32,
 	alive:         bool,
-	space:         ^Window, // Viewport sources have no scene.
+	window:        ^Window,
 	pins:          Pins,
 	color:         Color,
 	label:         string,
@@ -72,7 +72,7 @@ Element :: struct {
 	draggable:     bool,
 	pointer:       Pointer_Behavior,
 	window_hit:    Window_Hit,
-	owner:         ^Scene,
+	hidden:        bool,
 	motion:        Motion,
 	press:         Element_Callback(Element_ID),
 	update:        Element_Callback(f64),

@@ -1,6 +1,8 @@
 package main
 
 import "core:fmt"
+import "core:os"
+import "core:strings"
 import fluid "../.."
 import "../../elements"
 
@@ -13,47 +15,50 @@ Controls :: struct {
 	name_label, name, notes_label, notes: fluid.Element_ID,
 	action_count: int,
 	action_pulse: f64,
+	crosshair: bool,
+	size_index, language_index: int,
+	number_value, price_value, pixels_value: f64,
+	name_value, notes_value: Maybe(string),
+	last_action: string,
 }
 
-create_controls :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showcase)) {
+create_controls :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	c := &app.controls
 	c.navigation = app.sidebar
-	scene := fluid.create_scene(ui.window)
-	append(&entry.scenes, scene)
 
 	for title, index in ([]string{"Actions", "Few values", "Many values", "Numbers", "Text values"}) {
-		c.headings[index] = demo_text(scene, {}, title, .Heading, weight = .Bold)
+		c.headings[index] = demo_text(ui.window, {}, title, .Heading, weight = .Bold)
 	}
 
-	c.action = elements.button(scene, {}, "Run")
+	c.action = elements.button(ui.window, {}, "Run")
 	fluid.set_color(ui, c.action, {44, 78, 75, 255})
-	c.secondary = elements.button(scene, {}, "Preview", .Secondary)
-	c.dangerous = elements.dangerous_button(scene, {}, "Delete")
+	c.secondary = elements.button(ui.window, {}, "Preview", .Secondary)
+	c.dangerous = elements.dangerous_button(ui.window, {}, "Delete")
 	fluid.set_color(ui, c.dangerous, {92, 49, 48, 255})
-	c.action_feedback = demo_text(scene, {}, "Hold Delete or tap it three times.", .Caption, MUTED)
+	c.action_feedback = demo_text(ui.window, {}, "Hold Delete or tap it three times.", .Caption, MUTED)
 	for id in ([]fluid.Element_ID{c.action, c.secondary, c.dangerous}) {
 		fluid.on_press(ui, id, c, run_control_action)
 	}
 
-	c.toggle_label = demo_text(scene, {}, "Crosshair")
-	c.toggle = elements.toggle(scene, {}, "Off", false)
-	c.options = elements.options(scene, {}, {"Small", "Medium", "Large"}, 1)
-	c.select = elements.select(scene, {}, {
+	c.toggle_label = demo_text(ui.window, {}, "Crosshair")
+	c.toggle = elements.toggle(ui.window, {}, c.crosshair ? "On" : "Off", c.crosshair)
+	c.options = elements.options(ui.window, {}, {"Small", "Medium", "Large"}, c.size_index)
+	c.select = elements.select(ui.window, {}, {
 		"English", "Spanish", "French", "German", "Italian",
 		"Portuguese", "Polish", "Ukrainian", "Japanese", "Korean",
-	}, 0)
+	}, c.language_index)
 
-	c.select_hint = demo_text(scene, {}, "Click a neighbor or drag the current value.", .Caption, MUTED)
-	c.number_hint = demo_text(scene, {}, "Drag to adjust. Double-click to type.", .Caption, MUTED)
-	c.number = elements.number_input(scene, {}, 42)
-	c.price = elements.number_input(scene, {}, 25, {minimum = 0, step = 0.25, prefix = "$"})
-	c.pixels = elements.number_input(scene, {}, 16, {minimum = 0, maximum = 999, suffix = " px"})
+	c.select_hint = demo_text(ui.window, {}, "Click a neighbor or drag the current value.", .Caption, MUTED)
+	c.number_hint = demo_text(ui.window, {}, "Drag to adjust. Double-click to type.", .Caption, MUTED)
+	c.number = elements.number_input(ui.window, {}, c.number_value)
+	c.price = elements.number_input(ui.window, {}, c.price_value, {minimum = 0, step = 0.25, prefix = "$"})
+	c.pixels = elements.number_input(ui.window, {}, c.pixels_value, {minimum = 0, maximum = 999, suffix = " px"})
 
-	c.name_label = demo_text(scene, {}, "Name", .Body, MUTED)
-	c.name = elements.text_input(scene, {}, "Alex", "Enter a name")
+	c.name_label = demo_text(ui.window, {}, "Name", .Body, MUTED)
+	c.name = elements.text_input(ui.window, {}, c.name_value.? or_else "Alex", "Enter a name")
 	fluid.set_draw(ui, c.name, demo_field_style)
-	c.notes_label = demo_text(scene, {}, "Notes", .Body, MUTED)
-	c.notes = elements.text_area(scene, {}, "First line\nSecond line", "Enter notes")
+	c.notes_label = demo_text(ui.window, {}, "Notes", .Body, MUTED)
+	c.notes = elements.text_area(ui.window, {}, c.notes_value.? or_else "First line\nSecond line", "Enter notes")
 	fluid.set_draw(ui, c.notes, demo_field_style)
 
 	for id in ([]fluid.Element_ID{
@@ -62,6 +67,9 @@ create_controls :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showca
 		elements.on_change(ui, id, c, apply_control_change)
 	}
 
+	if c.action_count > 0 {
+		fluid.set_label(ui, c.action_feedback, fmt.tprintf("%s · %d", c.last_action, c.action_count))
+	}
 	fluid.on_update(ui, c.headings[0], c, update_controls)
 	update_controls(c, ui, 0)
 }
@@ -69,19 +77,46 @@ create_controls :: proc(app: ^Showcase, ui: ^fluid.UI, entry: ^fluid.Page(Showca
 run_control_action :: proc(c: ^Controls, ui: ^fluid.UI, id: fluid.Element_ID) {
 	c.action_count += 1
 	c.action_pulse = 0.5
-	action := id == c.action ? "Ran" : id == c.secondary ? "Previewed" : "Deleted"
-	fluid.set_label(ui, c.action_feedback, fmt.tprintf("%s · %d", action, c.action_count))
+	c.last_action = id == c.action ? "Ran" : id == c.secondary ? "Previewed" : "Deleted"
+	fluid.set_label(ui, c.action_feedback, fmt.tprintf("%s · %d", c.last_action, c.action_count))
 }
 
 apply_control_change :: proc(c: ^Controls, ui: ^fluid.UI, change: elements.Control_Change) {
 	id := change.id
 	switch value in change.value {
 	case bool:
+		c.crosshair = value
 		fluid.set_selected(ui, id, value)
 		fluid.set_label(ui, id, value ? "On" : "Off")
-	case int: elements.set_choice(ui, id, value)
-	case f64: elements.set_number(ui, id, value)
-	case string: elements.set_text_value(ui, id, value)
+	case int:
+		choice := id == c.options ? &c.size_index : &c.language_index
+		choice^ = value
+		elements.set_choice(ui, id, value)
+	case f64:
+		number := id == c.number ? &c.number_value : id == c.price ? &c.price_value : &c.pixels_value
+		number^ = value
+		elements.set_number(ui, id, value)
+	case string:
+		field := id == c.name ? &c.name_value : &c.notes_value
+		allocator := os.heap_allocator()
+		next := strings.clone(value, allocator)
+		delete(field^.? or_else "", allocator)
+		field^ = next
+		elements.set_text_value(ui, id, next)
+	}
+}
+
+leave_controls :: proc(app: ^Showcase, ui: ^fluid.UI) {
+	c := &app.controls
+	for id in c.headings {
+		fluid.remove(ui, id)
+	}
+	for id in ([]fluid.Element_ID{
+		c.action, c.secondary, c.dangerous, c.action_feedback,
+		c.toggle_label, c.toggle, c.options, c.select, c.number, c.price, c.pixels,
+		c.number_hint, c.select_hint, c.name_label, c.name, c.notes_label, c.notes,
+	}) {
+		fluid.remove(ui, id)
 	}
 }
 

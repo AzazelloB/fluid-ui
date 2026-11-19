@@ -2,9 +2,9 @@ package fluid
 
 // Draw without presenting, so applications can composite their own effects.
 draw :: proc(app: ^UI, window: ^Window) {
-	for id in app.active {
+	for id in app.order {
 		element := get_element(app, id)
-		if coordinate_window(element) != window {
+		if element.window != window || element.hidden {
 			continue
 		}
 		view := make_element_view(app, id, element)

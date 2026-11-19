@@ -4,16 +4,16 @@ import fluid ".."
 
 FOCUS_BORDER :: fluid.Color{143, 225, 196, 255}
 
-panel :: proc(scene: ^fluid.Scene, pins: fluid.Pins, color: fluid.Color) -> fluid.Element_ID {
-	return fluid.create_element(scene, {pins = pins, color = color, surface = true})
+panel :: proc(window: ^fluid.Window, pins: fluid.Pins, color: fluid.Color) -> fluid.Element_ID {
+	return fluid.create_element(window, {pins = pins, color = color, surface = true})
 }
 
 Button_Variant :: enum {Primary, Secondary}
 
-button :: proc(scene: ^fluid.Scene, pins: fluid.Pins, label: string,
+button :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string,
 	variant: Button_Variant = .Primary,
 ) -> fluid.Element_ID {
-	return create_control(scene, pins, label, Button_Control{variant = variant})
+	return create_control(window, pins, label, Button_Control{variant = variant})
 }
 
 set_button_variant :: proc(ui: ^fluid.UI, id: fluid.Element_ID, variant: Button_Variant) {
@@ -39,10 +39,10 @@ button_style :: proc(style: fluid.Style) -> fluid.Style {
 	return result
 }
 
-draggable_panel :: proc(scene: ^fluid.Scene, pins: fluid.Pins, color: fluid.Color) -> fluid.Element_ID {
-	return fluid.create_element(scene, {pins = pins, color = color, surface = true, draggable = true})
+draggable_panel :: proc(window: ^fluid.Window, pins: fluid.Pins, color: fluid.Color) -> fluid.Element_ID {
+	return fluid.create_element(window, {pins = pins, color = color, surface = true, draggable = true})
 }
 
-label :: proc(scene: ^fluid.Scene, pins: fluid.Pins, text: string) -> fluid.Element_ID {
-	return fluid.create_element(scene, {pins = pins, label = text, style = {focus_border = FOCUS_BORDER}})
+label :: proc(window: ^fluid.Window, pins: fluid.Pins, text: string) -> fluid.Element_ID {
+	return fluid.create_element(window, {pins = pins, label = text, style = {focus_border = FOCUS_BORDER}})
 }

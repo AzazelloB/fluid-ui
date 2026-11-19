@@ -20,10 +20,10 @@ accepts_press :: proc(element: ^Element) -> bool {
 
 @(private="package")
 hit_test :: proc(app: ^UI, window: ^Window, point: [2]f32) -> Element_ID {
-	for i := len(app.active) - 1; i >= 0; i -= 1 {
-		id := app.active[i]
+	for i := len(app.order) - 1; i >= 0; i -= 1 {
+		id := app.order[i]
 		element := get_element(app, id)
-		if coordinate_window(element) != window || element.pointer == .Pass {
+		if element.window != window || element.hidden || element.pointer == .Pass {
 			continue
 		}
 		if element.pointer == .Auto && (!window.custom_title_bar || element.window_hit == .Client) &&
