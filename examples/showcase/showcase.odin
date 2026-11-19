@@ -3,9 +3,28 @@ package main
 import fluid "../.."
 import "../../elements"
 
+Showcase_Tab :: enum {Rectangles, Transitions, Docking, Catalog, Controls, Logs, Bamboo}
+
+Showcase_Page :: struct {
+	title:  string,
+	create: proc(app: ^Showcase, ui: ^fluid.UI),
+	leave:  proc(app: ^Showcase, ui: ^fluid.UI),
+}
+
+showcase_pages := [Showcase_Tab]Showcase_Page{
+	.Rectangles = {title = "Rectangles", create = create_rectangles, leave = leave_rectangles},
+	.Transitions = {title = "Transitions", create = create_conversations, leave = leave_conversations},
+	.Docking = {title = "Docking", create = create_docking, leave = leave_docking},
+	.Catalog = {title = "Catalog", create = create_catalog, leave = leave_catalog},
+	.Controls = {title = "Controls", create = create_controls, leave = leave_controls},
+	.Logs = {title = "Logs", create = create_logs, leave = leave_logs},
+	.Bamboo = {title = "Bamboo Forest", create = create_bamboo, leave = leave_bamboo},
+}
+
 Showcase :: struct {
 	launch:        Launch_Reveal,
-	pages:         fluid.Page_Set(Showcase),
+	tabs:          [Showcase_Tab]fluid.Element_ID,
+	current_page:  Maybe(Showcase_Tab),
 	sidebar:       fluid.Element_ID,
 	title_bar:     Title_Bar,
 	rectangles:    Rectangles,
@@ -18,28 +37,34 @@ Showcase :: struct {
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
-	// Adding or removing a demo changes this list and its typed state field.
-	definitions := [?]fluid.Page(Showcase){
-		{title = "Rectangles", create = create_rectangles, leave = leave_rectangles},
-		{title = "Transitions", create = create_conversations, leave = leave_conversations},
-		{title = "Docking", create = create_docking, leave = leave_docking},
-		{title = "Catalog", create = create_catalog, leave = leave_catalog},
-		{title = "Controls", create = create_controls, leave = leave_controls},
-		{title = "Logs", create = create_logs, leave = leave_logs},
-		{title = "Bamboo Forest", create = create_bamboo, leave = leave_bamboo},
-	}
-	fluid.create_pages(&app.pages, ui, app, definitions[:])
 	start_launch_reveal(&app.launch, ui.window)
 	app.sidebar = elements.panel(ui.window, {}, {21, 29, 40, 255})
 	create_title_bar(&app.title_bar, ui.window)
-	for page, index in app.pages.entries {
+	for page, index in showcase_pages {
 		tab := elements.button(ui.window, {}, page.title, .Secondary)
 		fluid.set_text_style(ui, tab, .Body, INK)
-		fluid.bind_page_tab(&app.pages, index, tab)
+		app.tabs[index] = tab
+		fluid.on_press(ui, tab, app, select_tab)
 	}
 	update_navigation(app, ui, 0)
 	fluid.on_update(ui, app.sidebar, app, update_navigation)
-	fluid.open_page(&app.pages, 0)
+	select_tab(app, ui, app.tabs[.Rectangles])
+}
+
+select_tab :: proc(app: ^Showcase, ui: ^fluid.UI, id: fluid.Element_ID) {
+	for tab, index in app.tabs {
+		if tab != id || app.current_page == index {
+			continue
+		}
+		if previous, open := app.current_page.?; open {
+			showcase_pages[previous].leave(app, ui)
+			fluid.set_selected(ui, app.tabs[previous], false)
+		}
+		showcase_pages[index].create(app, ui)
+		app.current_page = index
+		fluid.set_selected(ui, tab, true)
+		return
+	}
 }
 
 showcase_body :: proc(ui: ^fluid.UI) -> fluid.Pins {
@@ -62,9 +87,9 @@ tab_pins :: proc(sidebar_right: f32, index: int) -> fluid.Pins {
 	return {left = 0.75, top = top, right = sidebar_right - 0.75, bottom = top + 2.875}
 }
 
-navigation_width :: proc(app: ^Showcase, ui: ^fluid.UI) -> f32 {
+navigation_width :: proc(ui: ^fluid.UI) -> f32 {
 	width := f32(11.25)
-	for page in app.pages.entries {
+	for page in showcase_pages {
 		text_width, _ := fluid.measure_text(ui.window, page.title)
 		width = max(width, text_width + 3.5)
 	}
@@ -73,10 +98,10 @@ navigation_width :: proc(app: ^Showcase, ui: ^fluid.UI) -> f32 {
 
 update_navigation :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	viewport := fluid.bounds(ui, ui.window.viewport)
-	sidebar_right := navigation_width(app, ui)
+	sidebar_right := navigation_width(ui)
 	fluid.set_target(ui, app.sidebar, {right = sidebar_right, bottom = viewport.bottom})
 	layout_title_bar(&app.title_bar, ui, viewport, sidebar_right)
-	for page, index in app.pages.entries {
-		fluid.set_target(ui, page.tab, tab_pins(sidebar_right, index))
+	for tab, index in app.tabs {
+		fluid.set_target(ui, tab, tab_pins(sidebar_right, int(index)))
 	}
 }
