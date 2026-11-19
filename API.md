@@ -139,18 +139,18 @@ The stock elements use `Style.hover_border` to change the border while hovered.
 
 ## Scroll views
 
-Use `create_scroll_view` for a vertical viewport with clipping, a scrollbar,
-wheel easing, direct trackpad scrolling, and keyboard navigation. Its draw
-callback receives the visible interval in content coordinates and the clip
-rectangle in physical pixels. Draw only the content in that interval. To
+Use `elements.create_scroll_view` for a vertical viewport with clipping, a
+scrollbar, wheel easing, direct trackpad scrolling, and keyboard navigation.
+Its draw callback receives the visible interval in content coordinates and the
+clip rectangle in physical pixels. Draw only the content in that interval. To
 place a content coordinate `y`, use `clip.y + (y - first) * pixels_per_unit`.
 
-`set_scroll_content` sets the absolute beginning and end of the content and
-the height of one content unit in UI units. One unit can represent a row or
+`elements.set_scroll_content` sets the absolute beginning and end of the content
+and the height of one content unit in UI units. One unit can represent a row or
 any other fixed vertical step. Keeping absolute coordinates lets the view
 hold its place when new content is appended or old content expires. Set
-`stick_to_end` for a live feed. `scroll_to_end` jumps to the end, and
-`scroll_follows_end` reports whether the view is following it.
+`stick_to_end` for a live feed. `elements.scroll_to_end` jumps to the end, and
+`elements.scroll_follows_end` reports whether the view is following it.
 
 Input handlers can consume `Precise_Scroll_Event` to receive direct scroll
 motion. A handler that returns false receives the regular `Wheel_Event`

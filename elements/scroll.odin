@@ -1,19 +1,20 @@
-package fluid
+package elements
 
 import "core:math"
 import "core:os"
+import fluid ".."
 
 Scroll_Viewport :: struct {
-	element: Element_View,
-	clip: IRect, // Physical pixels. Drawing inside the callback is already clipped.
+	element: fluid.Element_View,
+	clip: fluid.IRect, // Physical pixels. Drawing inside the callback is already clipped.
 	first, end: f64, // Visible content interval, including partial units.
 	pixels_per_unit: f64,
 }
 
 Scroll_View_Definition :: struct {
-	pins: Pins,
-	color: Color,
-	style: Style,
+	pins: fluid.Pins,
+	color: fluid.Color,
+	style: fluid.Style,
 	stick_to_end: bool,
 	state: rawptr,
 	draw: proc(state: rawptr, viewport: Scroll_Viewport),
@@ -32,14 +33,14 @@ Scroll_State :: struct {
 	drawn_at: u64,
 }
 
-create_scroll_view :: proc(window: ^Window, definition: Scroll_View_Definition) -> Element_ID {
+create_scroll_view :: proc(window: ^fluid.Window, definition: Scroll_View_Definition) -> fluid.Element_ID {
 	assert(definition.draw != nil)
 	state := new(Scroll_State, os.heap_allocator())
 	state^ = {
 		data = definition.state, draw = definition.draw, release_graphics = definition.release_graphics,
 		unit_height = 1, stick_to_end = definition.stick_to_end, following = definition.stick_to_end,
 	}
-	return create_element(window, {
+	return fluid.create_element(window, {
 		pins = definition.pins, color = definition.color, style = definition.style,
 		surface = true, focusable = true, draw = draw_scroll_view,
 		behavior = {
@@ -51,7 +52,7 @@ create_scroll_view :: proc(window: ^Window, definition: Scroll_View_Definition) 
 
 // The content bounds are absolute. One content unit occupies unit_height UI units.
 // Arrows move by one content unit and a wheel notch moves by three.
-set_scroll_content :: proc(ui: ^UI, id: Element_ID, first, end: f64, unit_height: f64 = 1) {
+set_scroll_content :: proc(ui: ^fluid.UI, id: fluid.Element_ID, first, end: f64, unit_height: f64 = 1) {
 	assert(first <= end && unit_height > 0 && !math.is_inf(first) && !math.is_inf(end) && !math.is_inf(unit_height))
 	state := get_scroll_state(ui, id)
 	if state.first == state.end {
@@ -60,19 +61,19 @@ set_scroll_content :: proc(ui: ^UI, id: Element_ID, first, end: f64, unit_height
 	state.first, state.end, state.unit_height = first, end, unit_height
 }
 
-scroll_to_end :: proc(ui: ^UI, id: Element_ID) {
+scroll_to_end :: proc(ui: ^fluid.UI, id: fluid.Element_ID) {
 	state := get_scroll_state(ui, id)
-	layout := scroll_layout(state, element_view(ui, id))
+	layout := scroll_layout(state, fluid.element_view(ui, id))
 	set_scroll_target(state, layout, layout.last, false)
 }
 
-scroll_follows_end :: proc(ui: ^UI, id: Element_ID) -> bool {
+scroll_follows_end :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> bool {
 	return get_scroll_state(ui, id).following
 }
 
 @(private="file")
-get_scroll_state :: proc(ui: ^UI, id: Element_ID) -> ^Scroll_State {
-	behavior := element_behavior(ui, id)
+get_scroll_state :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> ^Scroll_State {
+	behavior := fluid.element_behavior(ui, id)
 	assert(behavior.input == scroll_view_input)
 	return cast(^Scroll_State)behavior.state
 }
@@ -92,22 +93,22 @@ destroy_scroll_view :: proc(data: rawptr) {
 
 @(private="file")
 Scroll_Layout :: struct {
-	clip: IRect,
-	track: Pins,
+	clip: fluid.IRect,
+	track: fluid.Pins,
 	scale: f32,
 	pixels_per_unit, visible, last: f64,
 }
 
 @(private="file")
-scroll_layout :: proc(state: ^Scroll_State, view: Element_View) -> Scroll_Layout {
+scroll_layout :: proc(state: ^Scroll_State, view: fluid.Element_View) -> Scroll_Layout {
 	r := view.pins
-	scale := pixel_scale(view.window)
-	track := Pins{r.right - 0.8, r.top + 0.5, r.right - 0.4, r.bottom - 0.5}
+	scale := fluid.pixel_scale(view.window)
+	track := fluid.Pins{r.right - 0.8, r.top + 0.5, r.right - 0.4, r.bottom - 0.5}
 	left := i32(math.round((r.left + 0.8) * scale))
 	right := i32(math.round((track.left - 0.5) * scale))
 	top := i32(math.round(track.top * scale))
 	bottom := i32(math.round(track.bottom * scale))
-	clip := IRect{left, top, max(0, right - left), max(0, bottom - top)}
+	clip := fluid.IRect{left, top, max(0, right - left), max(0, bottom - top)}
 	pixels_per_unit := state.unit_height * f64(scale)
 	visible := f64(clip.h) / pixels_per_unit
 	return {clip, track, scale, pixels_per_unit, visible, max(state.first, state.end - visible)}
@@ -130,7 +131,7 @@ set_scroll_target :: proc(state: ^Scroll_State, layout: Scroll_Layout, target: f
 
 @(private="file")
 advance_scroll :: proc(state: ^Scroll_State, layout: Scroll_Layout) {
-	now := monotonic_ns()
+	now := fluid.monotonic_ns()
 	previous := state.drawn_at
 	state.drawn_at = now
 	state.offset = scroll_offset(state, layout)
@@ -147,9 +148,9 @@ advance_scroll :: proc(state: ^Scroll_State, layout: Scroll_Layout) {
 }
 
 @(private="file")
-scroll_thumb :: proc(state: ^Scroll_State, layout: Scroll_Layout) -> Pins {
+scroll_thumb :: proc(state: ^Scroll_State, layout: Scroll_Layout) -> fluid.Pins {
 	track := layout.track
-	track_height := height(track)
+	track_height := fluid.height(track)
 	content_height := state.end - state.first
 	thumb_height := track_height
 	progress: f32
@@ -162,19 +163,19 @@ scroll_thumb :: proc(state: ^Scroll_State, layout: Scroll_Layout) -> Pins {
 }
 
 @(private="file")
-scroll_view_input :: proc(data: rawptr, ui: ^UI, id: Element_ID, event: Element_Event) -> bool {
+scroll_view_input :: proc(data: rawptr, ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Element_Event) -> bool {
 	state := cast(^Scroll_State)data
-	view := element_view(ui, id)
+	view := fluid.element_view(ui, id)
 	layout := scroll_layout(state, view)
 	first := scroll_offset(state, layout)
 	#partial switch value in event {
-	case Wheel_Event:
+	case fluid.Wheel_Event:
 		if value != 0 {
 			target := state.following ? first : clamp(state.target, state.first, layout.last)
 			set_scroll_target(state, layout, target - 3 * f64(value), true)
 		}
 		return true
-	case Precise_Scroll_Event:
+	case fluid.Precise_Scroll_Event:
 		delta := 3 * f64(value.steps)
 		if distance, ok := value.distance.?; ok {
 			delta = f64(distance) / state.unit_height
@@ -183,7 +184,7 @@ scroll_view_input :: proc(data: rawptr, ui: ^UI, id: Element_ID, event: Element_
 			set_scroll_target(state, layout, first - delta, false)
 		}
 		return true
-	case Keyboard_Event:
+	case fluid.Keyboard_Event:
 		if !value.down { return false }
 		page := max(1, layout.visible - 1)
 		#partial switch value.key {
@@ -197,17 +198,17 @@ scroll_view_input :: proc(data: rawptr, ui: ^UI, id: Element_ID, event: Element_
 		}
 		set_scroll_target(state, layout, first, false)
 		return true
-	case Pointer_Event:
+	case fluid.Pointer_Event:
 		track := layout.track
 		thumb := scroll_thumb(state, layout)
-		travel := height(track) - height(thumb)
+		travel := fluid.height(track) - fluid.height(thumb)
 		switch value.kind {
 		case .Down:
-			hit := Pins{track.left - 0.25, track.top, view.pins.right, track.bottom}
-			if travel <= 0 || !contains(hit, value.point) { return false }
-			on_thumb := contains({hit.left, thumb.top, hit.right, thumb.bottom}, value.point)
-			state.thumb_grab = on_thumb ? value.point.y - thumb.top : height(thumb) / 2
-			capture_pointer(ui, id)
+			hit := fluid.Pins{track.left - 0.25, track.top, view.pins.right, track.bottom}
+			if travel <= 0 || !fluid.contains(hit, value.point) { return false }
+			on_thumb := fluid.contains({hit.left, thumb.top, hit.right, thumb.bottom}, value.point)
+			state.thumb_grab = on_thumb ? value.point.y - thumb.top : fluid.height(thumb) / 2
+			fluid.capture_pointer(ui, id)
 			if on_thumb {
 				set_scroll_target(state, layout, first, false)
 				return true
@@ -226,20 +227,20 @@ scroll_view_input :: proc(data: rawptr, ui: ^UI, id: Element_ID, event: Element_
 }
 
 @(private="file")
-draw_scroll_view :: proc(view: Element_View) {
+draw_scroll_view :: proc(view: fluid.Element_View) {
 	state := get_scroll_state(view.ui, view.id)
 	layout := scroll_layout(state, view)
 	advance_scroll(state, layout)
 	renderer := view.window.renderer
-	paint_styled_surface(renderer, pixel_rect(view.pins, layout.scale), view.style,
+	fluid.paint_styled_surface(renderer, fluid.pixel_rect(view.pins, layout.scale), view.style,
 		view.color, view.hovered, view.focused, layout.scale)
 	if layout.clip.w == 0 || layout.clip.h == 0 { return }
 	if layout.last > state.first {
-		render_fill_rect(renderer, pixel_rect(layout.track, layout.scale), {30, 42, 57, 255})
-		render_fill_rect(renderer, pixel_rect(scroll_thumb(state, layout), layout.scale), {139, 157, 178, 255})
+		fluid.render_fill_rect(renderer, fluid.pixel_rect(layout.track, layout.scale), {30, 42, 57, 255})
+		fluid.render_fill_rect(renderer, fluid.pixel_rect(scroll_thumb(state, layout), layout.scale), {139, 157, 178, 255})
 	}
-	previous := render_clip(renderer, layout.clip)
-	defer restore_render_clip(renderer, previous)
+	previous := fluid.render_clip(renderer, layout.clip)
+	defer fluid.restore_render_clip(renderer, previous)
 	first := scroll_offset(state, layout)
 	state.draw(state.data, {view, layout.clip, first, min(state.end, first + layout.visible), layout.pixels_per_unit})
 }

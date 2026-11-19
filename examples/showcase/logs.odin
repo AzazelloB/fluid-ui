@@ -69,7 +69,7 @@ create_logs :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page.pause = elements.button(ui.window, {}, page.paused ? "Resume" : "Pause")
 	page.latest = elements.button(ui.window, {}, "Jump to latest", .Secondary)
 	page.metrics = demo_text(ui.window, {}, "", .Caption, MUTED)
-	page.view = fluid.create_scroll_view(ui.window, {
+	page.view = elements.create_scroll_view(ui.window, {
 		color = {14, 20, 29, 255},
 		style = {radius = 0.75, border = EDGE, border_width = 0.0625, focus_border = MINT},
 		stick_to_end = true, state = page, draw = draw_logs, release_graphics = release_log_text,
@@ -95,7 +95,7 @@ toggle_log_stream :: proc(page: ^Logs, ui: ^fluid.UI, id: fluid.Element_ID) {
 }
 
 follow_logs :: proc(page: ^Logs, ui: ^fluid.UI, id: fluid.Element_ID) {
-	fluid.scroll_to_end(ui, page.view)
+	elements.scroll_to_end(ui, page.view)
 }
 
 update_logs :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
@@ -110,8 +110,8 @@ update_logs :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	advance_logs(page, now)
 	font := fluid.text_font(ui.window, .Caption, .Regular)
 	row_height := fluid.text_line_advance(font) / f64(fluid.pixel_scale(ui.window))
-	fluid.set_scroll_content(ui, page.view, f64(page.next - LOG_HISTORY), f64(page.next), row_height)
-	following := fluid.scroll_follows_end(ui, page.view)
+	elements.set_scroll_content(ui, page.view, f64(page.next - LOG_HISTORY), f64(page.next), row_height)
+	following := elements.scroll_follows_end(ui, page.view)
 	fluid.set_label(ui, page.status, following ? "Following latest" : "Viewing history")
 	elapsed := now - page.sampled_at
 	if elapsed >= 500_000_000 {
@@ -139,7 +139,7 @@ set_log_metrics :: proc(page: ^Logs, ui: ^fluid.UI, rate: i64, draw_ms: f64) {
 		gib, LOG_HISTORY, rate, draw_ms))
 }
 
-draw_logs :: proc(state: rawptr, viewport: fluid.Scroll_Viewport) {
+draw_logs :: proc(state: rawptr, viewport: elements.Scroll_Viewport) {
 	page := cast(^Logs)state
 	started := fluid.monotonic_ns()
 	defer {
