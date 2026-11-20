@@ -18,8 +18,9 @@ and `destroy` when the element is removed.
 Use `set_hidden(ui, id)` to keep an element's ID, state, and draw order while
 pausing drawing, input, updates, and animation. Pass `false` to show it again.
 Hiding cancels focus and pointer interaction. `remove(ui, id)` destroys the
-element and invalidates its ID. A page can remove its elements on exit and
-create new ones from app-owned state when reopened.
+element and invalidates its ID. Use `remove_all(ui, ids)` to remove a list of
+elements through the same cleanup path. Expired and repeated IDs are skipped.
+A page can remove its elements on exit and recreate them from app-owned state.
 
 Drawing is opt-in for engine elements. Supply a `draw` callback at creation or
 use `fluid.set_draw` to replace it. Pass `nil` to stop drawing. Panels, labels,

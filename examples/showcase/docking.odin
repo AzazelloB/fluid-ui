@@ -25,12 +25,12 @@ Docking :: struct {
 create_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.docking
 	page.navigation = app.sidebar
-	page.area = demo_surface(ui.window, {}, radius = 1.25)
-	page.placement = elements.options(ui.window, {}, {"Free", "Left", "Right", "Bottom"}, 0)
+	page.area = track_page_element(&app.page_elements, demo_surface(ui.window, {}, radius = 1.25))
+	page.placement = track_page_element(&app.page_elements, elements.options(ui.window, {}, {"Free", "Left", "Right", "Bottom"}, 0))
 	elements.on_change(ui, page.placement, page, choose_dock)
 	labels := [Dock]string{.Left = "Left", .Right = "Right", .Bottom = "Bottom"}
 	for dock in Dock {
-		page.zones[dock] = demo_surface(ui.window, {}, DOCK_COLOR)
+		page.zones[dock] = track_page_element(&app.page_elements, demo_surface(ui.window, {}, DOCK_COLOR))
 		fluid.set_hidden(ui, page.zones[dock])
 		fluid.set_label(ui, page.zones[dock], labels[dock])
 		fluid.set_text_style(ui, page.zones[dock], .Body, MUTED)
@@ -38,7 +38,7 @@ create_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	layout_docking(page, ui, showcase_body(ui))
 	area := fluid.bounds(ui, page.area)
 	position := page.free_position.? or_else [2]f32{area.left + 12.25, area.top + 4}
-	page.card = elements.draggable_panel(ui.window, card_at(position), {54, 103, 91, 255})
+	page.card = track_page_element(&app.page_elements, elements.draggable_panel(ui.window, card_at(position), {54, 103, 91, 255}))
 	fluid.set_label(ui, page.card, "Drag")
 	fluid.set_style(ui, page.card, {radius = 1, border = {120, 188, 161, 255}, border_width = 0.0625, shadow = 1})
 	if dock, docked := page.docked.?; docked {
@@ -147,12 +147,6 @@ leave_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page.free_position = nil
 	if page.docked == nil {
 		page.free_position = [2]f32{bounds.left, bounds.top}
-	}
-	for id in ([]fluid.Element_ID{page.area, page.card, page.placement}) {
-		fluid.remove(ui, id)
-	}
-	for id in page.zones {
-		fluid.remove(ui, id)
 	}
 }
 

@@ -53,36 +53,36 @@ CATALOG_DURATION :: 0.52
 create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	catalog := &app.catalog
 	catalog.navigation = app.sidebar
-	catalog.scrim = elements.panel(ui.window, {}, {})
+	catalog.scrim = track_page_element(&app.page_elements, elements.panel(ui.window, {}, {}))
 	fluid.set_pointer_behavior(ui, catalog.scrim, .Block)
-	catalog.back = elements.button(ui.window, {}, "‹ Back")
+	catalog.back = track_page_element(&app.page_elements, elements.button(ui.window, {}, "‹ Back"))
 	fluid.set_style(ui, catalog.back, {radius = 1.25})
 	fluid.on_press(ui, catalog.back, catalog, close_catalog_card)
 
 	for product, index in CATALOG_PRODUCTS {
 		card := &catalog.cards[index]
-		card.parts[.Surface] = elements.button(ui.window, {}, "")
+		card.parts[.Surface] = track_page_element(&app.page_elements, elements.button(ui.window, {}, ""))
 		fluid.set_color(ui, card.parts[.Surface], SURFACE)
 		fluid.set_draw(ui, card.parts[.Surface], elements.draw_default)
 		fluid.on_press(ui, card.parts[.Surface], catalog, open_catalog_card)
-		card.parts[.Backdrop] = elements.panel(ui.window, {}, product.backdrop)
-		card.parts[.Shell] = elements.panel(ui.window, {}, product.shell)
-		card.parts[.Grille] = elements.panel(ui.window, {}, product.grille)
+		card.parts[.Backdrop] = track_page_element(&app.page_elements, elements.panel(ui.window, {}, product.backdrop))
+		card.parts[.Shell] = track_page_element(&app.page_elements, elements.panel(ui.window, {}, product.shell))
+		card.parts[.Grille] = track_page_element(&app.page_elements, elements.panel(ui.window, {}, product.grille))
 		for slot in Catalog_Part.Slot_Top..=Catalog_Part.Slot_Bottom {
-			card.parts[slot] = elements.panel(ui.window, {}, product.shell)
+			card.parts[slot] = track_page_element(&app.page_elements, elements.panel(ui.window, {}, product.shell))
 		}
-		card.parts[.Light] = elements.panel(ui.window, {}, product.accent)
-		card.parts[.Name] = demo_text(ui.window, {}, product.name, .Heading, weight = .Bold)
-		card.parts[.Finish] = demo_text(ui.window, {}, product.finish, .Caption, MUTED)
-		card.parts[.Price] = demo_text(ui.window, {}, product.price, align = .Right)
-		card.parts[.Description] = demo_text(ui.window, {}, product.description, .Body, {183, 194, 209, 255})
+		card.parts[.Light] = track_page_element(&app.page_elements, elements.panel(ui.window, {}, product.accent))
+		card.parts[.Name] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.name, .Heading, weight = .Bold))
+		card.parts[.Finish] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.finish, .Caption, MUTED))
+		card.parts[.Price] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.price, align = .Right))
+		card.parts[.Description] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.description, .Body, {183, 194, 209, 255}))
 		fluid.set_text_wrap(ui, card.parts[.Description])
 
 		card.specs = {
-			demo_text(ui.window, {}, "BATTERY", .Caption, MUTED),
-			demo_text(ui.window, {}, product.battery, weight = .Bold),
-			demo_text(ui.window, {}, "WEIGHT", .Caption, MUTED),
-			demo_text(ui.window, {}, product.weight, weight = .Bold),
+			track_page_element(&app.page_elements, demo_text(ui.window, {}, "BATTERY", .Caption, MUTED)),
+			track_page_element(&app.page_elements, demo_text(ui.window, {}, product.battery, weight = .Bold)),
+			track_page_element(&app.page_elements, demo_text(ui.window, {}, "WEIGHT", .Caption, MUTED)),
+			track_page_element(&app.page_elements, demo_text(ui.window, {}, product.weight, weight = .Bold)),
 		}
 	}
 	fluid.on_update(ui, catalog.scrim, catalog, update_catalog)
@@ -110,21 +110,11 @@ close_catalog_card :: proc(catalog: ^Catalog, ui: ^fluid.UI, id: fluid.Element_I
 	catalog.opening = false
 }
 
-leave_catalog :: proc(app: ^Showcase, ui: ^fluid.UI) {
+leave_catalog :: proc(app: ^Showcase, _: ^fluid.UI) {
 	catalog := &app.catalog
 	catalog.selected = nil
 	catalog.opening = false
 	catalog.reveal = 0
-	fluid.remove(ui, catalog.scrim)
-	fluid.remove(ui, catalog.back)
-	for card in catalog.cards {
-		for id in card.parts {
-			fluid.remove(ui, id)
-		}
-		for id in card.specs {
-			fluid.remove(ui, id)
-		}
-	}
 }
 
 CATALOG_ART_HEIGHT :: 9.5

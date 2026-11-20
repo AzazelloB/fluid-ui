@@ -6,6 +6,7 @@ import fluid "../.."
 import "../../elements"
 
 Conversations :: struct {
+	elements: ^[dynamic]fluid.Element_ID,
 	navigation, sidebar, heading, area, empty_hint: fluid.Element_ID,
 	subject_label, subject, send_button: fluid.Element_ID,
 	items: [6]fluid.Element_ID,
@@ -17,40 +18,29 @@ Conversations :: struct {
 
 create_conversations :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.conversations
+	page.elements = &app.page_elements
 	page.navigation = app.sidebar
 	sidebar, heading, area := conversations_layout(page, ui)
-	page.sidebar = demo_surface(ui.window, sidebar)
-	page.heading = demo_text(ui.window, heading, "Conversations", .Heading)
-	page.empty_hint = demo_text(ui.window, empty_hint_pins(heading), "No conversations", .Body, MUTED)
-	page.area = demo_surface(ui.window, area, {21, 30, 41, 255}, radius = 1.25)
-	page.subject_label = demo_text(ui.window, {}, "Conversation title", .Caption, MUTED)
-	page.subject = elements.text_input(ui.window, {}, page.draft, "Optional title")
+	page.sidebar = track_page_element(page.elements, demo_surface(ui.window, sidebar))
+	page.heading = track_page_element(page.elements, demo_text(ui.window, heading, "Conversations", .Heading))
+	page.empty_hint = track_page_element(page.elements, demo_text(ui.window, empty_hint_pins(heading), "No conversations", .Body, MUTED))
+	page.area = track_page_element(page.elements, demo_surface(ui.window, area, {21, 30, 41, 255}, radius = 1.25))
+	page.subject_label = track_page_element(page.elements, demo_text(ui.window, {}, "Conversation title", .Caption, MUTED))
+	page.subject = track_page_element(page.elements, elements.text_input(ui.window, {}, page.draft, "Optional title"))
 	fluid.set_draw(ui, page.subject, demo_field_style)
 	elements.on_change(ui, page.subject, page, set_conversation_subject)
 	layout_composer(page, ui, area)
 	for title, index in page.titles[:min(page.sent, len(page.titles))] {
-		id := elements.button(ui.window, conversation_pins(sidebar, heading, index), title, .Secondary)
+		id := track_page_element(page.elements, elements.button(ui.window, conversation_pins(sidebar, heading, index), title, .Secondary))
 		page.items[index] = id
 		style_conversation(page, ui, id, title, sidebar, heading)
 		fluid.set_selected(ui, id, page.selected == index)
 	}
 	if page.sent > 0 {
-		fluid.remove(ui, page.empty_hint)
+		remove_page_element(ui, page.elements, page.empty_hint)
 	}
 	create_send_button(page, ui)
 	fluid.on_update(ui, page.sidebar, page, update_conversations)
-}
-
-leave_conversations :: proc(app: ^Showcase, ui: ^fluid.UI) {
-	page := &app.conversations
-	for id in ([]fluid.Element_ID{page.sidebar, page.heading, page.area, page.empty_hint, page.subject_label, page.subject, page.send_button}) {
-		if fluid.valid(ui, id) {
-			fluid.remove(ui, id)
-		}
-	}
-	for id in page.items[:min(page.sent, len(page.items))] {
-		fluid.remove(ui, id)
-	}
 }
 
 send_button_pins :: proc(area: fluid.Pins) -> fluid.Pins {
@@ -110,7 +100,7 @@ update_conversations :: proc(page: ^Conversations, ui: ^fluid.UI, dt: f64) {
 create_send_button :: proc(page: ^Conversations, ui: ^fluid.UI) {
 	area := fluid.bounds(ui, page.area)
 	send := send_button_pins(area)
-	id := elements.button(ui.window, fluid.translated(send, {0, 4}), "New conversation")
+	id := track_page_element(page.elements, elements.button(ui.window, fluid.translated(send, {0, 4}), "New conversation"))
 	fluid.set_color(ui, id, {50, 103, 90, 255})
 	fluid.set_style(ui, id, {radius = 0.75, border = {91, 152, 132, 255}, border_width = 0.0625, shadow = 0.625})
 	page.send_button = id
@@ -120,7 +110,7 @@ create_send_button :: proc(page: ^Conversations, ui: ^fluid.UI) {
 
 send_message :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Element_ID) {
 	if page.sent >= len(page.items) {
-		fluid.remove(ui, page.items[len(page.items) - 1])
+		remove_page_element(ui, page.elements, page.items[len(page.items) - 1])
 		delete(page.titles[len(page.titles) - 1], os.heap_allocator())
 	}
 	for index := min(page.sent, len(page.items) - 1); index > 0; index -= 1 {
@@ -144,7 +134,7 @@ send_message :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Element_ID) 
 	}
 	elements.set_text_value(ui, page.subject, "")
 	if page.sent == 1 {
-		fluid.remove(ui, page.empty_hint)
+		remove_page_element(ui, page.elements, page.empty_hint)
 	}
 	fluid.set_label(ui, id, page.titles[0])
 	style_conversation(page, ui, id, page.titles[0], sidebar, heading)

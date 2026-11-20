@@ -11,24 +11,17 @@ Rectangles :: struct {
 create_rectangles :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.rectangles
 	page.navigation = app.sidebar
-	page.stage = demo_surface(ui.window, {}, radius = 1.25)
-	page.toggle = elements.toggle(ui.window, {}, page.shifted ? "Reset" : "Move", page.shifted)
+	page.stage = track_page_element(&app.page_elements, demo_surface(ui.window, {}, radius = 1.25))
+	page.toggle = track_page_element(&app.page_elements, elements.toggle(ui.window, {}, page.shifted ? "Reset" : "Move", page.shifted))
 	elements.on_change(ui, page.toggle, page, shift_anchor)
-	page.anchor = elements.panel(ui.window, {}, {41, 83, 75, 255})
+	page.anchor = track_page_element(&app.page_elements, elements.panel(ui.window, {}, {41, 83, 75, 255}))
 	fluid.set_style(ui, page.anchor, {radius = 0.875, border = {106, 179, 156, 255}, border_width = 0.0625, shadow = 0.75})
-	page.upper = demo_surface(ui.window, {}, {29, 47, 53, 255}, radius = 0.625)
-	page.lower = demo_surface(ui.window, {}, {42, 41, 53, 255}, radius = 0.625)
-	page.bar = elements.panel(ui.window, {}, MINT)
+	page.upper = track_page_element(&app.page_elements, demo_surface(ui.window, {}, {29, 47, 53, 255}, radius = 0.625))
+	page.lower = track_page_element(&app.page_elements, demo_surface(ui.window, {}, {42, 41, 53, 255}, radius = 0.625))
+	page.bar = track_page_element(&app.page_elements, elements.panel(ui.window, {}, MINT))
 	fluid.set_style(ui, page.bar, {radius = 0.3125})
 	update_rectangles(page, ui, 0)
 	fluid.on_update(ui, page.stage, page, update_rectangles)
-}
-
-leave_rectangles :: proc(app: ^Showcase, ui: ^fluid.UI) {
-	page := &app.rectangles
-	for id in ([]fluid.Element_ID{page.stage, page.anchor, page.toggle, page.upper, page.lower, page.bar}) {
-		fluid.remove(ui, id)
-	}
 }
 
 anchor_pins :: proc(stage: fluid.Pins, shifted: bool) -> fluid.Pins {

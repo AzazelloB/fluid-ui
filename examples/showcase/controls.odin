@@ -27,38 +27,38 @@ create_controls :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	c.navigation = app.sidebar
 
 	for title, index in ([]string{"Actions", "Few values", "Many values", "Numbers", "Text values"}) {
-		c.headings[index] = demo_text(ui.window, {}, title, .Heading, weight = .Bold)
+		c.headings[index] = track_page_element(&app.page_elements, demo_text(ui.window, {}, title, .Heading, weight = .Bold))
 	}
 
-	c.action = elements.button(ui.window, {}, "Run")
+	c.action = track_page_element(&app.page_elements, elements.button(ui.window, {}, "Run"))
 	fluid.set_color(ui, c.action, {44, 78, 75, 255})
-	c.secondary = elements.button(ui.window, {}, "Preview", .Secondary)
-	c.dangerous = elements.dangerous_button(ui.window, {}, "Delete")
+	c.secondary = track_page_element(&app.page_elements, elements.button(ui.window, {}, "Preview", .Secondary))
+	c.dangerous = track_page_element(&app.page_elements, elements.dangerous_button(ui.window, {}, "Delete"))
 	fluid.set_color(ui, c.dangerous, {92, 49, 48, 255})
-	c.action_feedback = demo_text(ui.window, {}, "Hold Delete or tap it three times.", .Caption, MUTED)
+	c.action_feedback = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Hold Delete or tap it three times.", .Caption, MUTED))
 	for id in ([]fluid.Element_ID{c.action, c.secondary, c.dangerous}) {
 		fluid.on_press(ui, id, c, run_control_action)
 	}
 
-	c.toggle_label = demo_text(ui.window, {}, "Crosshair")
-	c.toggle = elements.toggle(ui.window, {}, c.crosshair ? "On" : "Off", c.crosshair)
-	c.options = elements.options(ui.window, {}, {"Small", "Medium", "Large"}, c.size_index)
-	c.select = elements.select(ui.window, {}, {
+	c.toggle_label = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Crosshair"))
+	c.toggle = track_page_element(&app.page_elements, elements.toggle(ui.window, {}, c.crosshair ? "On" : "Off", c.crosshair))
+	c.options = track_page_element(&app.page_elements, elements.options(ui.window, {}, {"Small", "Medium", "Large"}, c.size_index))
+	c.select = track_page_element(&app.page_elements, elements.select(ui.window, {}, {
 		"English", "Spanish", "French", "German", "Italian",
 		"Portuguese", "Polish", "Ukrainian", "Japanese", "Korean",
-	}, c.language_index)
+	}, c.language_index))
 
-	c.select_hint = demo_text(ui.window, {}, "Click a neighbor or drag the current value.", .Caption, MUTED)
-	c.number_hint = demo_text(ui.window, {}, "Drag to adjust. Double-click to type.", .Caption, MUTED)
-	c.number = elements.number_input(ui.window, {}, c.number_value)
-	c.price = elements.number_input(ui.window, {}, c.price_value, {minimum = 0, step = 0.25, prefix = "$"})
-	c.pixels = elements.number_input(ui.window, {}, c.pixels_value, {minimum = 0, maximum = 999, suffix = " px"})
+	c.select_hint = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Click a neighbor or drag the current value.", .Caption, MUTED))
+	c.number_hint = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Drag to adjust. Double-click to type.", .Caption, MUTED))
+	c.number = track_page_element(&app.page_elements, elements.number_input(ui.window, {}, c.number_value))
+	c.price = track_page_element(&app.page_elements, elements.number_input(ui.window, {}, c.price_value, {minimum = 0, step = 0.25, prefix = "$"}))
+	c.pixels = track_page_element(&app.page_elements, elements.number_input(ui.window, {}, c.pixels_value, {minimum = 0, maximum = 999, suffix = " px"}))
 
-	c.name_label = demo_text(ui.window, {}, "Name", .Body, MUTED)
-	c.name = elements.text_input(ui.window, {}, c.name_value.? or_else "Alex", "Enter a name")
+	c.name_label = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Name", .Body, MUTED))
+	c.name = track_page_element(&app.page_elements, elements.text_input(ui.window, {}, c.name_value.? or_else "Alex", "Enter a name"))
 	fluid.set_draw(ui, c.name, demo_field_style)
-	c.notes_label = demo_text(ui.window, {}, "Notes", .Body, MUTED)
-	c.notes = elements.text_area(ui.window, {}, c.notes_value.? or_else "First line\nSecond line", "Enter notes")
+	c.notes_label = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Notes", .Body, MUTED))
+	c.notes = track_page_element(&app.page_elements, elements.text_area(ui.window, {}, c.notes_value.? or_else "First line\nSecond line", "Enter notes"))
 	fluid.set_draw(ui, c.notes, demo_field_style)
 
 	for id in ([]fluid.Element_ID{
@@ -103,20 +103,6 @@ apply_control_change :: proc(c: ^Controls, ui: ^fluid.UI, change: elements.Contr
 		delete(field^.? or_else "", allocator)
 		field^ = next
 		elements.set_text_value(ui, id, next)
-	}
-}
-
-leave_controls :: proc(app: ^Showcase, ui: ^fluid.UI) {
-	c := &app.controls
-	for id in c.headings {
-		fluid.remove(ui, id)
-	}
-	for id in ([]fluid.Element_ID{
-		c.action, c.secondary, c.dangerous, c.action_feedback,
-		c.toggle_label, c.toggle, c.options, c.select, c.number, c.price, c.pixels,
-		c.number_hint, c.select_hint, c.name_label, c.name, c.notes_label, c.notes,
-	}) {
-		fluid.remove(ui, id)
 	}
 }
 

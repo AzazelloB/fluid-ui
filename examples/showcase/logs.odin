@@ -65,27 +65,20 @@ create_logs :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	advance_logs(page, now)
 	page.sample_start, page.sampled_at = page.next, now
 	page.draw_ns, page.draws = 0, 0
-	page.status = demo_text(ui.window, {}, "Following latest", .Body, MINT)
-	page.pause = elements.button(ui.window, {}, page.paused ? "Resume" : "Pause")
-	page.latest = elements.button(ui.window, {}, "Jump to latest", .Secondary)
-	page.metrics = demo_text(ui.window, {}, "", .Caption, MUTED)
-	page.view = elements.create_scroll_view(ui.window, {
+	page.status = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Following latest", .Body, MINT))
+	page.pause = track_page_element(&app.page_elements, elements.button(ui.window, {}, page.paused ? "Resume" : "Pause"))
+	page.latest = track_page_element(&app.page_elements, elements.button(ui.window, {}, "Jump to latest", .Secondary))
+	page.metrics = track_page_element(&app.page_elements, demo_text(ui.window, {}, "", .Caption, MUTED))
+	page.view = track_page_element(&app.page_elements, elements.create_scroll_view(ui.window, {
 		color = {14, 20, 29, 255},
 		style = {radius = 0.75, border = EDGE, border_width = 0.0625, focus_border = MINT},
 		stick_to_end = true, state = page, draw = draw_logs, release_graphics = release_log_text,
-	})
+	}))
 	fluid.on_press(ui, page.pause, page, toggle_log_stream)
 	fluid.on_press(ui, page.latest, page, follow_logs)
 	fluid.on_update(ui, page.view, app, update_logs)
 	set_log_metrics(page, ui, 0, 0)
 	update_logs(app, ui, 0)
-}
-
-leave_logs :: proc(app: ^Showcase, ui: ^fluid.UI) {
-	page := &app.logs
-	for id in ([]fluid.Element_ID{page.view, page.status, page.metrics, page.pause, page.latest}) {
-		fluid.remove(ui, id)
-	}
 }
 
 toggle_log_stream :: proc(page: ^Logs, ui: ^fluid.UI, id: fluid.Element_ID) {

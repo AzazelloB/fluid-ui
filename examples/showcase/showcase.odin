@@ -12,19 +12,20 @@ Showcase_Page :: struct {
 }
 
 showcase_pages := [Showcase_Tab]Showcase_Page{
-	.Rectangles = {title = "Rectangles", create = create_rectangles, leave = leave_rectangles},
-	.Transitions = {title = "Transitions", create = create_conversations, leave = leave_conversations},
+	.Rectangles = {title = "Rectangles", create = create_rectangles},
+	.Transitions = {title = "Transitions", create = create_conversations},
 	.Docking = {title = "Docking", create = create_docking, leave = leave_docking},
 	.Catalog = {title = "Catalog", create = create_catalog, leave = leave_catalog},
-	.Controls = {title = "Controls", create = create_controls, leave = leave_controls},
-	.Logs = {title = "Logs", create = create_logs, leave = leave_logs},
-	.Bamboo = {title = "Bamboo Forest", create = create_bamboo, leave = leave_bamboo},
+	.Controls = {title = "Controls", create = create_controls},
+	.Logs = {title = "Logs", create = create_logs},
+	.Bamboo = {title = "Bamboo Forest", create = create_bamboo},
 }
 
 Showcase :: struct {
 	launch:        Launch_Reveal,
 	tabs:          [Showcase_Tab]fluid.Element_ID,
 	current_page:  Maybe(Showcase_Tab),
+	page_elements: [dynamic]fluid.Element_ID,
 	sidebar:       fluid.Element_ID,
 	title_bar:     Title_Bar,
 	rectangles:    Rectangles,
@@ -37,6 +38,7 @@ Showcase :: struct {
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
+	app.page_elements = make([dynamic]fluid.Element_ID, 0, 64)
 	start_launch_reveal(&app.launch, ui.window)
 	app.sidebar = elements.panel(ui.window, {}, {21, 29, 40, 255})
 	create_title_bar(&app.title_bar, ui.window)
@@ -57,13 +59,32 @@ select_tab :: proc(app: ^Showcase, ui: ^fluid.UI, id: fluid.Element_ID) {
 			continue
 		}
 		if previous, open := app.current_page.?; open {
-			showcase_pages[previous].leave(app, ui)
+			if leave := showcase_pages[previous].leave; leave != nil {
+				leave(app, ui)
+			}
+			fluid.remove_all(ui, app.page_elements[:])
+			clear(&app.page_elements)
 			fluid.set_selected(ui, app.tabs[previous], false)
 		}
 		showcase_pages[index].create(app, ui)
 		app.current_page = index
 		fluid.set_selected(ui, tab, true)
 		return
+	}
+}
+
+track_page_element :: proc(ids: ^[dynamic]fluid.Element_ID, id: fluid.Element_ID) -> fluid.Element_ID {
+	append(ids, id)
+	return id
+}
+
+remove_page_element :: proc(ui: ^fluid.UI, ids: ^[dynamic]fluid.Element_ID, id: fluid.Element_ID) {
+	fluid.remove(ui, id)
+	for value, index in ids^ {
+		if value == id {
+			ordered_remove(ids, index)
+			return
+		}
 	}
 }
 

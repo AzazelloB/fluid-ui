@@ -70,6 +70,15 @@ remove :: proc(app: ^UI, id: Element_ID) {
 	append(&app.free_elements, slot(id))
 }
 
+// Remove live elements from the supplied list, skipping expired and repeated IDs.
+remove_all :: proc(app: ^UI, ids: []Element_ID) {
+	for id in ids {
+		if valid(app, id) {
+			remove(app, id)
+		}
+	}
+}
+
 set_color :: proc(app: ^UI, id: Element_ID, color: Color) {
 	get_element(app, id).color = color
 }
