@@ -93,7 +93,7 @@ draw_caption_button :: proc(view: fluid.Element_View) {
 			radius, fill)
 		// AppKit reveals all three glyphs as the pointer enters the controls.
 		hover := view.ui.hovered
-		if !disabled && fluid.is_active(view.ui, hover) && fluid.element_window(view.ui, hover) == view.window &&
+		if !disabled && fluid.valid(view.ui, hover) && fluid.element_window(view.ui, hover) == view.window &&
 		   fluid.element_behavior(view.ui, hover).destroy == destroy_caption {
 			draw_mac_caption_glyph(view.window, center, density, button.button, pressed && button.option)
 		}

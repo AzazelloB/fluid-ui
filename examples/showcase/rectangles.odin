@@ -53,7 +53,7 @@ update_rectangles :: proc(page: ^Rectangles, ui: ^fluid.UI, dt: f64) {
 
 shift_anchor :: proc(page: ^Rectangles, ui: ^fluid.UI, change: elements.Control_Change) {
 	page.shifted = change.value.(bool)
-	fluid.set_selected(ui, change.id, page.shifted)
+	elements.set_toggle(ui, change.id, page.shifted)
 	stage := fluid.bounds(ui, page.stage)
 	fluid.animate_to(ui, page.anchor, anchor_pins(stage, page.shifted), damped_animation(0.65))
 	fluid.set_label(ui, change.id, page.shifted ? "Reset" : "Move")

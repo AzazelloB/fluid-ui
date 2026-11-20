@@ -16,6 +16,11 @@ button :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string,
 	return create_control(window, pins, label, Button_Control{variant = variant})
 }
 
+set_button_selected :: proc(ui: ^fluid.UI, id: fluid.Element_ID, selected: bool) {
+	state := &get_control(ui, id).state.(Button_Control)
+	state.selected = selected
+}
+
 set_button_variant :: proc(ui: ^fluid.UI, id: fluid.Element_ID, variant: Button_Variant) {
 	state := &get_control(ui, id).state.(Button_Control)
 	state.variant = variant

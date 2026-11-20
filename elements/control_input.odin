@@ -80,7 +80,7 @@ control_key :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, even
 	switch &state in control.state {
 	case Toggle_Control:
 		if activate && event.down && !event.repeat {
-			emit_change(ui, id, !fluid.element_view(ui, id).selected)
+			emit_change(ui, id, !state.checked)
 		}
 	case Guard_Control:
 		if activate && !event.repeat {
@@ -119,7 +119,7 @@ control_press :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, ev
 	point := event.point
 	switch &state in control.state {
 	case Toggle_Control:
-		emit_change(ui, id, !fluid.element_view(ui, id).selected)
+		emit_change(ui, id, !state.checked)
 	case Guard_Control:
 		start_guard(&state, event.timestamp, .Unknown)
 	case Choice_Control:
@@ -246,6 +246,6 @@ stop_guard :: proc(ui: ^fluid.UI, id: fluid.Element_ID, guard: ^Guard_Control, n
 set_guard_progress :: proc(ui: ^fluid.UI, id: fluid.Element_ID, guard: ^Guard_Control, progress: f64) {
 	guard.progress = min(1, progress)
 	if guard.progress >= 1 {
-		fluid.queue_press(ui, id)
+		fluid.invoke_press(ui, id)
 	}
 }

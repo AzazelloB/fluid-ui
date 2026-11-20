@@ -47,12 +47,19 @@ create_text :: proc(font: Text_Style, label: string) -> ^Text {
 
 // Cached text follows its element's style and window scale.
 element_text :: proc(view: Element_View, placeholder: string = "") -> ^Text {
-	element := get_element(view.ui, view.id)
-	content := element.label != "" ? element.label : placeholder
+	assert(valid(view.ui, view.id))
+	appearance := element_appearance(view.ui, view.id)
+	if appearance == nil {
+		if placeholder == "" {
+			return nil
+		}
+		appearance = ensure_appearance(view.ui, view.id)
+	}
+	content := appearance.label != "" ? appearance.label : placeholder
 	if content == "" {
 		return nil
 	}
-	return cached_text(&element.text, text_font(view.window, element.text_size, element.text_weight), content)
+	return cached_text(&appearance.text, text_font(view.window, appearance.text_size, appearance.text_weight), content)
 }
 
 cached_text :: proc(cache: ^^Text, font: Text_Style, label: string) -> ^Text {
@@ -128,17 +135,22 @@ release_cached_text :: proc(cache: ^^Text) {
 
 @(private="package")
 release_window_text :: proc(window: ^Window) {
-	for id in window.ui.order {
-		element := get_element(window.ui, id)
-		if element.window == window {
-			release_element_text(element)
+	for ids in ([2][]Element_ID{window.ui.order[:], window.ui.hidden[:]}) {
+		for id in ids {
+			element := get_element(window.ui, id)
+			if element.window == window {
+				release_element_text(window.ui, id)
+			}
 		}
 	}
 }
 
 @(private="package")
-release_element_text :: proc(element: ^Element) {
-	release_cached_text(&element.text)
+release_element_text :: proc(app: ^UI, id: Element_ID) {
+	element := get_element(app, id)
+	if appearance := element_appearance(app, id); appearance != nil {
+		release_cached_text(&appearance.text)
+	}
 	if element.behavior.release_graphics != nil {
 		element.behavior.release_graphics(element.behavior.state)
 	}

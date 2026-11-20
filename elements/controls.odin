@@ -26,10 +26,13 @@ Control :: struct {
 Control_State :: union {Button_Control, Toggle_Control, Choice_Control, Number_Control, Text_Control, Guard_Control}
 
 @(private="package")
-Button_Control :: struct {variant: Button_Variant}
+Button_Control :: struct {
+	variant: Button_Variant,
+	selected: bool,
+}
 
 @(private="package")
-Toggle_Control :: struct {}
+Toggle_Control :: struct {checked: bool}
 
 @(private="package")
 Choice_Control :: struct {
@@ -145,9 +148,12 @@ emit_change :: proc(ui: ^fluid.UI, id: fluid.Element_ID, value: Control_Value) {
 }
 
 toggle :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string, value: bool) -> fluid.Element_ID {
-	id := create_control(window, pins, label, Toggle_Control{})
-	fluid.set_selected(window.ui, id, value)
-	return id
+	return create_control(window, pins, label, Toggle_Control{checked = value})
+}
+
+set_toggle :: proc(ui: ^fluid.UI, id: fluid.Element_ID, checked: bool) {
+	state := &get_control(ui, id).state.(Toggle_Control)
+	state.checked = checked
 }
 
 dangerous_button :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string) -> fluid.Element_ID {

@@ -4,7 +4,7 @@ package fluid
 draw :: proc(app: ^UI, window: ^Window) {
 	for id in app.order {
 		element := get_element(app, id)
-		if element.window != window || element.hidden || element.draw == nil {
+		if element.window != window || element.draw == nil {
 			continue
 		}
 		view := make_element_view(app, id, element)

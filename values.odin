@@ -4,17 +4,7 @@ import "core:math"
 
 // Bounds are numeric values in the element's window, in UI units.
 bounds :: proc(ui: ^UI, id: Element_ID) -> Pins {
-	return element_bounds(get_element(ui, id))
-}
-
-@(private="package")
-element_bounds :: proc(element: ^Element) -> Pins {
-	result := element.pins
-	if element.motion.animation.sample != nil {
-		motion := element.motion
-		result = checked_pins(motion.animation.sample(motion.from, result, motion.progress))
-	}
-	return result
+	return get_element(ui, id).pins
 }
 
 width :: proc(pins: Pins) -> f32 { return max(f32(0), pins.right - pins.left) }

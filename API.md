@@ -120,6 +120,11 @@ or pass a wrap width to `measure_text` to measure the full block.
 - `bounds(ui, id)` reads the visible pins. Animation samplers receive and
   return `Pins`.
 
+`on_update` registers one callback per frame for a visible element. Hiding or
+removing an element cancels its remaining update for that frame. Callbacks run
+in registration order, independent of stacking. Showing an element rejoins the
+end of the update list. Updates added or shown during the pass start next frame.
+
 Dragging moves the element's numeric pins. Other elements move with it only if
 application code updates them. Removing an element invalidates its ID; other
 elements retain their own values.
@@ -200,7 +205,7 @@ Choose a control according to the value or action it represents.
 | --- | --- |
 | `button` | Click or press Enter or Space to invoke its `on_press` callback. Use `.Secondary` for a text-first action. |
 | `dangerous_button` | Hold for 750 ms or tap three times in quick succession. Progress clears after 500 ms of inactivity. A cancelled press earns no tap. |
-| `toggle` | Flip a Boolean. Apply an accepted change with `fluid.set_selected`. |
+| `toggle` | Flip a Boolean. Apply an accepted change with `elements.set_toggle`. |
 | `options` | Pick from visible choices or use the arrow keys. Apply an accepted index with `set_choice`. |
 | `select` | Click a neighbor, use the arrow keys, or drag the current value to preview and release to commit. Selection stops at either end. |
 | `number_input` | Drag or use the arrow keys to adjust. Double-click or press Enter or Space to edit. Enter or loss of focus commits a valid number, and Escape cancels. `Number_Options` configures the bounds, step, and display affixes. |

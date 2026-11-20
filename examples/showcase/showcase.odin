@@ -49,6 +49,7 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 		fluid.on_press(ui, tab, app, select_tab)
 	}
 	update_navigation(app, ui, 0)
+	// Register navigation first because page layouts read the sidebar bounds.
 	fluid.on_update(ui, app.sidebar, app, update_navigation)
 	select_tab(app, ui, app.tabs[.Rectangles])
 }
@@ -64,11 +65,11 @@ select_tab :: proc(app: ^Showcase, ui: ^fluid.UI, id: fluid.Element_ID) {
 			}
 			fluid.remove_all(ui, app.page_elements[:])
 			clear(&app.page_elements)
-			fluid.set_selected(ui, app.tabs[previous], false)
+			elements.set_button_selected(ui, app.tabs[previous], false)
 		}
 		showcase_pages[index].create(app, ui)
 		app.current_page = index
-		fluid.set_selected(ui, tab, true)
+		elements.set_button_selected(ui, tab, true)
 		return
 	}
 }

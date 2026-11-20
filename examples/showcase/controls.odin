@@ -86,7 +86,7 @@ apply_control_change :: proc(c: ^Controls, ui: ^fluid.UI, change: elements.Contr
 	switch value in change.value {
 	case bool:
 		c.crosshair = value
-		fluid.set_selected(ui, id, value)
+		elements.set_toggle(ui, id, value)
 		fluid.set_label(ui, id, value ? "On" : "Off")
 	case int:
 		choice := id == c.options ? &c.size_index : &c.language_index

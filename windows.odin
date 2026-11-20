@@ -101,10 +101,12 @@ close_window :: proc(window: ^Window) {
 		return
 	}
 	app := window.ui
-	for index := len(app.order) - 1; index >= 0; index -= 1 {
-		id := app.order[index]
-		if element_window(app, id) == window {
-			remove(app, id)
+	for ids in ([2]^[dynamic]Element_ID{&app.order, &app.hidden}) {
+		for index := len(ids^) - 1; index >= 0; index -= 1 {
+			id := ids[index]
+			if element_window(app, id) == window {
+				remove(app, id)
+			}
 		}
 	}
 	cancel_window_effect(window)
@@ -279,6 +281,9 @@ set_window_clip :: proc(window: ^Window, mask: Window_Mask = {}) -> bool {
 // Literal positions and animation origins are rebased to preserve screen space.
 transfer :: proc(app: ^UI, id: Element_ID, destination: ^Window) {
 	assert(destination.ui == app && destination.open)
+	if element_removing(app, id) {
+		return
+	}
 	element := get_element(app, id)
 	source := element.window
 	assert(id != source.viewport)
@@ -286,10 +291,15 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Window) {
 	if source == destination {
 		return
 	}
-	element.pins = transfer_pins(source, destination, element.pins)
-	element.motion.from = transfer_pins(source, destination, element.motion.from)
+	if motion := element_motion(app, id); motion != nil {
+		motion.from = transfer_pins(source, destination, motion.from)
+		motion.target = transfer_pins(source, destination, motion.target)
+		sample_motion(element, motion^)
+	} else {
+		element.pins = transfer_pins(source, destination, element.pins)
+	}
 	detach_input(app, id)
-	release_element_text(element)
+	release_element_text(app, id)
 	element.window = destination
 }
 

@@ -58,8 +58,8 @@ focus_next :: proc(ui: ^UI, window: ^Window, backwards: bool) {
 		index = (index + step + count) % count
 		id := ui.order[index]
 		element := get_element(ui, id)
-		r := element_bounds(element)
-		if element.window == window && !element.hidden && can_focus(element) && width(r) > 0 && height(r) > 0 {
+		r := element.pins
+		if element.window == window && can_focus(element) && width(r) > 0 && height(r) > 0 {
 			change_focus(ui, id, true)
 			return
 		}
@@ -88,7 +88,7 @@ handle_key :: proc(ui: ^UI, window: ^Window, event: Keyboard_Event) -> bool {
 	}
 	activate := event.key == Key.Space || event.key == Key.Enter || event.key == Key.Keypad_Enter
 	if activate && event.down && !event.repeat && is_active(ui, id) && accepts_press(get_element(ui, id)) {
-		queue_press(ui, id)
+		call_press(ui, id)
 	}
 	return activate
 }

@@ -36,21 +36,21 @@ Button_Motion :: struct {
 }
 
 @(private="package")
-button_frame :: proc(view: fluid.Element_View, motion: ^Button_Motion, secondary: bool, now: u64) -> fluid.Element_View {
+button_frame :: proc(view: fluid.Element_View, motion: ^Button_Motion, secondary: bool, now: u64, selected: bool = false) -> fluid.Element_View {
 	view := view
-	selected := view.selected ? f32(1) : 0
+	selected_amount := selected ? f32(1) : 0
 	hovered := view.hovered ? f32(1) : 0
 	pressed := view.pressed ? f32(1) : 0
 	if !motion.initialized {
 		motion^ = {
 			initialized = true,
-			emphasis = {from = selected, target = selected},
+			emphasis = {from = selected_amount, target = selected_amount},
 			hover = {from = hovered, target = hovered},
 			press = {from = pressed, target = pressed},
 		}
 	}
 	DURATION :: 150_000_000
-	emphasis := tween_to(&motion.emphasis, selected, now, DURATION)
+	emphasis := tween_to(&motion.emphasis, selected_amount, now, DURATION)
 	hover := tween_to(&motion.hover, hovered, now, DURATION)
 	press := tween_to(&motion.press, pressed, now, DURATION)
 	view.style = button_style(view.style)

@@ -12,6 +12,7 @@ UI :: struct {
 	window:                            ^Window, // Primary application window.
 	windows:                           [dynamic]^Window,
 	free_windows:                      [dynamic]^Window,
+	removing:                         [dynamic]Element_ID,
 	free_elements:                     [dynamic]int,
 	hovered:                           Element_ID,
 	pressed:                           Element_ID,
@@ -19,8 +20,12 @@ UI :: struct {
 	drag:                              Drag,
 	vulkan:                            Vulkan,
 	elements:                          [dynamic]Element, // Stable registry indices; never reordered.
-	order:                             [dynamic]Element_ID, // Back-to-front element order.
-	events:                            [dynamic]Element_ID, // Mouse-down presses in the current frame.
+	appearances:                       map[Element_ID]Element_Appearance,
+	motions, paused_motions:           [dynamic]Motion,
+	order:                             [dynamic]Element_ID, // Visible elements, back to front.
+	hidden:                            [dynamic]Element_ID,
+	next_draw_order:                   u64,
+	updates, frame_updates:            [dynamic]Element_ID,
 	storage:                           virtual.Arena,
 	live_frame_storage:                ^virtual.Arena,
 	event_context:                     ^runtime.Context,
@@ -52,9 +57,15 @@ init :: proc(app: ^UI, config: Config) -> bool {
 	context.allocator = virtual.arena_allocator(&app.storage)
 	app.elements = make([dynamic]Element, 0, 64)
 	app.order = make([dynamic]Element_ID, 0, 64)
-	app.events = make([dynamic]Element_ID)
+	app.appearances = make(map[Element_ID]Element_Appearance)
+	app.motions = make([dynamic]Motion)
+	app.paused_motions = make([dynamic]Motion)
+	app.hidden = make([dynamic]Element_ID)
+	app.updates = make([dynamic]Element_ID)
+	app.frame_updates = make([dynamic]Element_ID)
 	app.windows = make([dynamic]^Window)
 	app.free_windows = make([dynamic]^Window)
+	app.removing = make([dynamic]Element_ID)
 	app.free_elements = make([dynamic]int)
 	if !platform_init() {
 		fmt.eprintln("Cannot initialize native windowing")
@@ -93,7 +104,6 @@ begin_frame :: proc(app: ^UI) {
 	for window in app.windows {
 		sync_window_geometry(window)
 	}
-	clear(&app.events)
 	app.drag.started = NO_ELEMENT
 	app.drag.released = NO_ELEMENT
 }
@@ -145,7 +155,7 @@ finish_frame :: proc(app: ^UI) -> (presented, visible: bool, refresh: u64) {
 	advance_animations(app, dt)
 	// Behavior sees hover before its own layout changes.
 	refresh_hover(app)
-	dispatch_behavior(app, dt)
+	dispatch_updates(app, dt)
 	if !app.running {
 		return
 	}

@@ -40,40 +40,20 @@ Element_ID :: distinct int
 
 Motion_Sample :: proc(from, to: Pins, progress: f32) -> Pins
 
-// The transition clock lives alongside its target.
-Motion :: struct {
-	from:      Pins,
-	elapsed:   f64,
-	progress:  f32,
-	animation: Animation,
-	frame:     u64,
-}
-
 Element :: struct {
 	generation:    u32,
 	alive:         bool,
 	window:        ^Window,
 	pins:          Pins,
-	color:         Color,
-	label:         string,
-	style:         Style,
-	text_size:     Text_Size,
-	text_align:    Text_Align,
-	text_weight:   Text_Weight,
-	text_wrap:     bool,
-	text_color:    Color,
-	text:          ^Text,
-	selected:      bool,
 	focusable:     bool,
 	behavior:      Element_Behavior,
 	draw:          Element_Draw,
 	cursor:        Cursor,
-	surface, pressable: bool,
+	pressable:     bool,
 	draggable:     bool,
 	pointer:       Pointer_Behavior,
 	window_hit:    Window_Hit,
-	hidden:        bool,
-	motion:        Motion,
+	draw_order:    u64,
 	press:         Element_Callback(Element_ID),
 	update:        Element_Callback(f64),
 }

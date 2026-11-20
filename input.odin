@@ -23,14 +23,14 @@ hit_test :: proc(app: ^UI, window: ^Window, point: [2]f32) -> Element_ID {
 	for i := len(app.order) - 1; i >= 0; i -= 1 {
 		id := app.order[i]
 		element := get_element(app, id)
-		if element.window != window || element.hidden || element.pointer == .Pass {
+		if element.window != window || element.pointer == .Pass {
 			continue
 		}
 		if element.pointer == .Auto && (!window.custom_title_bar || element.window_hit == .Client) &&
 		   !element.draggable && !accepts_press(element) && !element.focusable && element.behavior.input == nil {
 			continue
 		}
-		if contains(element_bounds(element), point) {
+		if contains(element.pins, point) {
 			return element.pointer == .Block ? NO_ELEMENT : id
 		}
 	}
@@ -60,6 +60,9 @@ press_at :: proc(app: ^UI, window: ^Window, event: Platform_Event) {
 		focus_id = id
 	}
 	change_focus(app, focus_id, true)
+	if !app.running || !window.open {
+		return
+	}
 	id = hit_test(app, window, point)
 	app.pressed = NO_ELEMENT
 	if id == NO_ELEMENT {
@@ -69,23 +72,23 @@ press_at :: proc(app: ^UI, window: ^Window, event: Platform_Event) {
 	if accepts_press(element) || element.behavior.input != nil {
 		app.pressed = id
 	}
-	if send_element_event(app, id, Pointer_Event{
+	if element.behavior.input != nil && (send_element_event(app, id, Pointer_Event{
 		kind = .Down, point = point, timestamp = event.timestamp, clicks = event.clicks,
 		modifiers = event.modifiers, inside = true,
-	}) || !is_active(app, id) {
+	}) || !is_active(app, id)) {
 		return
 	}
 	element = get_element(app, id)
-	if accepts_press(element) {
-		queue_press(app, id)
-	}
 	if element.draggable {
-		r := element_bounds(element)
+		r := element.pins
 		app.drag.element = id
 		app.drag.started = id
 		app.drag.offset = point - [2]f32{r.left, r.top}
 		bring_to_front(app, id)
 		platform_capture_mouse(window)
+	}
+	if accepts_press(element) {
+		call_press(app, id)
 	}
 }
 
@@ -122,7 +125,9 @@ dispatch_requests :: proc(app: ^UI, poll_native: bool, deadline: u64 = 0) {
 		case .Wheel:
 			point := event.position / window_scale(window)
 			if id := hit_test(app, window, point); id != NO_ELEMENT {
-				if !event.wheel_direct || !send_element_event(app, id, Precise_Scroll_Event{event.wheel, event.wheel_distance}) {
+				if !event.wheel_direct {
+					send_element_event(app, id, Wheel_Event(event.wheel))
+				} else if !send_element_event(app, id, Precise_Scroll_Event{event.wheel, event.wheel_distance}) && is_active(app, id) {
 					send_element_event(app, id, Wheel_Event(event.wheel))
 				}
 			}

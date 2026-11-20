@@ -2,7 +2,6 @@ package fluid
 
 import "core:mem"
 import "core:os"
-import "core:slice"
 
 // Bindings are owned by their element. Callback owners must stay at a stable
 // address while bound. Public registration keeps the owner type.
@@ -42,36 +41,30 @@ on_press :: proc(ui: ^UI, id: Element_ID, owner: ^$Owner, run: proc(owner: ^Owne
 
 // Behavior runs only while this element is active, and ends on removal.
 on_update :: proc(ui: ^UI, id: Element_ID, owner: ^$Owner, run: proc(owner: ^Owner, ui: ^UI, dt: f64)) {
-	bind_element(&get_element(ui, id).update, owner, run)
+	element := get_element(ui, id)
+	if element.update.call == nil && is_active(ui, id) {
+		append(&ui.updates, id)
+	}
+	bind_element(&element.update, owner, run)
 }
 
 @(private="package")
-dispatch_behavior :: proc(ui: ^UI, dt: f64) {
-	// Snapshot IDs: callbacks may remove elements, create windows, or navigate.
-	order := slice.clone(ui.order[:], context.temp_allocator)
-	events := slice.clone(ui.events[:], context.temp_allocator)
-	for id in events {
-		if !is_active(ui, id) {
-			continue
-		}
-		callback := get_element(ui, id).press
-		if callback.call != nil {
-			callback.call(callback.data, ui, id)
-		}
-		if !ui.running {
-			return
-		}
+remove_update :: proc(ui: ^UI, id: Element_ID) {
+	remove_id(&ui.updates, id)
+	remove_id(&ui.frame_updates, id)
+}
+
+@(private="package")
+dispatch_updates :: proc(ui: ^UI, dt: f64) {
+	// Reverse the update IDs so popping preserves their registration order.
+	// Hiding or removing an element also removes its remaining frame work.
+	defer clear(&ui.frame_updates)
+	for index := len(ui.updates) - 1; index >= 0; index -= 1 {
+		append(&ui.frame_updates, ui.updates[index])
 	}
-	for id in order {
-		if !is_active(ui, id) {
-			continue
-		}
+	for ui.running && len(ui.frame_updates) > 0 {
+		id := pop(&ui.frame_updates)
 		callback := get_element(ui, id).update
-		if callback.call != nil {
-			callback.call(callback.data, ui, dt)
-		}
-		if !ui.running {
-			return
-		}
+		callback.call(callback.data, ui, dt)
 	}
 }

@@ -48,9 +48,9 @@ draw_control :: proc(view: fluid.Element_View) {
 	case Choice_Control:
 		draw_choice(view, &state, now)
 	case Button_Control:
-		draw_default(button_frame(view, &control.motion, state.variant == .Secondary, now))
+		draw_default(button_frame(view, &control.motion, state.variant == .Secondary, now, state.selected))
 	case Toggle_Control:
-		draw_default(button_frame(view, &control.motion, true, now))
+		draw_default(button_frame(view, &control.motion, true, now, state.checked))
 	case Number_Control, Text_Control:
 		draw_field(view)
 	case Guard_Control:
@@ -175,7 +175,6 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u
 		if !choice.neighbors || slot.selected {
 			view := element
 			view.pins = r
-			view.selected = slot.selected
 			view.focused = element.focused && slot.selected
 			view.hovered = over
 			view.pressed = element.pressed && over
@@ -187,7 +186,7 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u
 					view.style.square_corners |= {.Top_Right, .Bottom_Right}
 				}
 			}
-			draw_element_surface(button_frame(view, &item.motion, !choice.neighbors, now))
+			draw_element_surface(button_frame(view, &item.motion, !choice.neighbors, now, slot.selected))
 		}
 		if item.label == "" {
 			continue

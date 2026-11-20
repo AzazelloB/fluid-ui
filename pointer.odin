@@ -3,7 +3,7 @@ package fluid
 // Capture sends subsequent motion and release to this element even outside
 // its bounds. On release or cancellation the engine drops capture first.
 capture_pointer :: proc(ui: ^UI, id: Element_ID) {
-	if is_active(ui, id) && ui.pressed == id {
+	if id != NO_ELEMENT && ui.pressed == id {
 		ui.captured = id
 		platform_capture_mouse(element_window(ui, id))
 	}
@@ -62,7 +62,7 @@ deliver_pointer :: proc(ui: ^UI, window: ^Window, point: [2]f32, timestamp: u64,
 	if !up || pointer_captured(ui, id) {
 		send_element_event(ui, id, event)
 	}
-	if up && is_active(ui, id) && pointer_target(ui) == id {
+	if up && pointer_target(ui) == id {
 		release_capture(ui, id)
 		event.kind = .Up
 		send_element_event(ui, id, event)

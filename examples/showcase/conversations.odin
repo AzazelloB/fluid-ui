@@ -34,7 +34,7 @@ create_conversations :: proc(app: ^Showcase, ui: ^fluid.UI) {
 		id := track_page_element(page.elements, elements.button(ui.window, conversation_pins(sidebar, heading, index), title, .Secondary))
 		page.items[index] = id
 		style_conversation(page, ui, id, title, sidebar, heading)
-		fluid.set_selected(ui, id, page.selected == index)
+		elements.set_button_selected(ui, id, page.selected == index)
 	}
 	if page.sent > 0 {
 		remove_page_element(ui, page.elements, page.empty_hint)
@@ -158,6 +158,6 @@ select_conversation :: proc(page: ^Conversations, ui: ^fluid.UI, id: fluid.Eleme
 		if item == id {
 			page.selected = index
 		}
-		fluid.set_selected(ui, item, item == id)
+		elements.set_button_selected(ui, item, item == id)
 	}
 }
