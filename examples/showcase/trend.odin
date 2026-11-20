@@ -15,7 +15,21 @@ Trend_Axes :: struct {
 	compare, historical, centered: bool,
 }
 
+Trend_Sampling :: struct {
+	step, window: int,
+}
+
+MAX_TREND_POINTS :: 122
+
 trend_minutes := [Trend_Span]int{.Half_Hour = 30, .Three_Hours = 180, .Day = 1440}
+// Anchor plotted vertices to fixed sample multiples and average across the
+// 24-hour grid so panning translates the curve without aliasing high-frequency
+// ripples.
+trend_sampling := [Trend_Span]Trend_Sampling{
+	.Half_Hour   = {step = 1,  window = 1},
+	.Three_Hours = {step = 6,  window = 1},
+	.Day         = {step = 24, window = 48},
+}
 
 change_trend_span :: proc(t: ^Telemetry, ui: ^fluid.UI, change: elements.Control_Change) {
 	choice := change.value.(int)
@@ -151,29 +165,62 @@ draw_trend :: proc(view: fluid.Element_View) {
 
 	end := t.anchor.? or_else t.sample
 	start_sample := end - minutes * 2
+	span := end - start_sample
+	visible_end := min(end, t.sample)
 	probe := t.probe.? or_else end
-	fraction := f32(probe - start_sample) / f32(end - start_sample)
+	fraction := f32(probe - start_sample) / f32(span)
 	probe_x := x0 + axis.w * fraction
 	if t.probe != nil {
 		cursor := t.note_cursor ? LIME : MUTED
 		fluid.render_fill_rect(window.renderer, {probe_x, y0, t.note_cursor ? 2 : 1, axis.h}, cursor)
 	}
+	sampling := trend_sampling[t.span]
+	step, avg_window := sampling.step, sampling.window
+	assert(avg_window == 1 || avg_window == 2 * step)
+	clip_left, clip_right := i32(math.round(x0)), i32(math.round(x1))
+	clip_top, clip_bottom := i32(math.floor(chart.y)), i32(math.ceil(chart.y + chart.h))
+	plot_clip := fluid.IRect{clip_left, clip_top, max(i32(0), clip_right - clip_left), max(i32(0), clip_bottom - clip_top)}
 	for site in Site {
 		if !t.compare && site != t.site {
 			continue
 		}
 		tint := t.compare ? sites[site].color : info.color
-		points: [TREND_SAMPLES][2]f32
+		points: [MAX_TREND_POINTS][2]f32
 		count := 0
-		for &point, i in points {
-			sample := start_sample + (end - start_sample) * i / (TREND_SAMPLES - 1)
-			if sample > t.sample { break }
+		if axis.w > 0 && visible_end > start_sample {
+			first_grid := start_sample - start_sample %% step
+			previous_sum: f64
+			if avg_window > 1 {
+				previous_sum = reading_sum(site, metric, first_grid - step, step)
+			}
+			for sample := first_grid; sample < visible_end; sample += step {
+				value: f32
+				if avg_window > 1 {
+					current_sum := reading_sum(site, metric, sample, step)
+					value = f32((previous_sum + current_sum) / f64(avg_window))
+					previous_sum = current_sum
+				} else {
+					value = reading(site, metric, sample)
+				}
+				points[count] = {
+					x0 + axis.w * f32(sample - start_sample) / f32(span),
+					y1 - axis.h * (value - lo) / (hi - lo),
+				}
+				count += 1
+			}
+			end_value := trend_reading(site, metric, visible_end, avg_window)
+			points[count] = {
+				x0 + axis.w * f32(visible_end - start_sample) / f32(span),
+				y1 - axis.h * (end_value - lo) / (hi - lo),
+			}
 			count += 1
-			value := reading(site, metric, sample)
-			point = {x0 + axis.w * f32(i) / (TREND_SAMPLES - 1), y1 - axis.h * (value - lo) / (hi - lo)}
 		}
-		if count >= 2 { draw_trend_line(window, points[:count], tint, y1, !t.compare) }
-		value := reading(site, metric, probe)
+		if count >= 2 {
+			previous_clip := fluid.render_clip(window.renderer, plot_clip)
+			draw_trend_line(window, points[:count], tint, y1, !t.compare)
+			fluid.restore_render_clip(window.renderer, previous_clip)
+		}
+		value := trend_reading(site, metric, probe, avg_window)
 		y := y1 - axis.h * (value - lo) / (hi - lo)
 		fluid.rounded_fill(window.renderer, {probe_x - 0.2 * scale, y - 0.2 * scale, 0.4 * scale, 0.4 * scale}, 0.2 * scale, tint)
 		if t.cursor_pulse > 0 {
@@ -186,6 +233,21 @@ draw_trend :: proc(view: fluid.Element_View) {
 	}
 }
 
+reading_sum :: proc(site: Site, metric: Metric, last_sample, count: int) -> f64 {
+	total: f64
+	for offset in 0..<count {
+		total += f64(reading(site, metric, last_sample - offset))
+	}
+	return total
+}
+
+trend_reading :: proc(site: Site, metric: Metric, sample, window: int) -> f32 {
+	if window <= 1 {
+		return reading(site, metric, sample)
+	}
+	return f32(reading_sum(site, metric, sample, window) / f64(window))
+}
+
 draw_trend_line :: proc(window: ^fluid.Window, points: [][2]f32, tint: fluid.Color, bottom: f32, shade: bool) {
 	scale := fluid.pixel_scale(window)
 	half_width := 0.069 * scale
@@ -193,8 +255,8 @@ draw_trend_line :: proc(window: ^fluid.Window, points: [][2]f32, tint: fluid.Col
 	clear_color := [4]f32{color.r, color.g, color.b, 0}
 	VERTICES_PER_POINT :: 6
 	INDICES_PER_SEGMENT :: 24
-	vertices: [TREND_SAMPLES * VERTICES_PER_POINT]fluid.Vertex
-	indices: [(TREND_SAMPLES - 1) * INDICES_PER_SEGMENT]i32
+	vertices: [MAX_TREND_POINTS * VERTICES_PER_POINT]fluid.Vertex
+	indices: [(MAX_TREND_POINTS - 1) * INDICES_PER_SEGMENT]i32
 	previous := trend_normal(points[1] - points[0])
 	for point, i in points {
 		next := previous
