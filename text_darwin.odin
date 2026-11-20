@@ -18,6 +18,8 @@ Text_CG_Rect :: struct { origin: Text_CG_Point, size: struct { width, height: f6
 @(private="file", default_calling_convention="c")
 foreign text_cf {
 	CFRelease :: proc(object: rawptr) ---
+	CFRetain :: proc(object: rawptr) -> rawptr ---
+	CFDataCreate :: proc(allocator: rawptr, bytes: [^]u8, length: int) -> rawptr ---
 	CFStringCreateWithCharacters :: proc(allocator: rawptr, chars: [^]u16, length: int) -> rawptr ---
 	CFAttributedStringCreateMutable :: proc(allocator: rawptr, maximum_length: int) -> rawptr ---
 	CFAttributedStringReplaceString :: proc(value: rawptr, range: Text_CF_Range, replacement: rawptr) ---
@@ -29,6 +31,8 @@ foreign text_cf {
 
 @(private="file", default_calling_convention="c")
 foreign text_ct {
+	CTFontManagerCreateFontDescriptorsFromData :: proc(data: rawptr) -> rawptr ---
+	CTFontCreateWithFontDescriptor :: proc(descriptor: rawptr, size: f64, transform: rawptr) -> rawptr ---
 	CTFontCreateUIFontForLanguage :: proc(kind: u32, size: f64, language: rawptr) -> rawptr ---
 	CTFontGetAscent :: proc(font: rawptr) -> f64 ---
 	CTFontGetDescent :: proc(font: rawptr) -> f64 ---
@@ -77,8 +81,66 @@ Core_Text_Line :: struct {
 	ink: IRect,
 }
 
+@(private="file", thread_local)
+macos_font_descriptors: [2]rawptr
+
+// Set the default regular and bold faces on the UI thread before creating any text.
+// Each input contains one font face. The app need not install either face in macOS.
+set_macos_text_fonts :: proc(regular, bold: []u8) -> bool {
+	descriptors: [2]rawptr
+	for data, index in ([2][]u8{regular, bold}) {
+		descriptors[index] = read_macos_font_descriptor(data)
+		if descriptors[index] == nil {
+			for descriptor in descriptors[:index] {
+				CFRelease(descriptor)
+			}
+			return false
+		}
+	}
+	clear_macos_text_fonts()
+	macos_font_descriptors = descriptors
+	return true
+}
+
+// Restore the system faces after the UI session and its text layouts are destroyed.
+clear_macos_text_fonts :: proc() {
+	for descriptor in macos_font_descriptors {
+		if descriptor != nil {
+			CFRelease(descriptor)
+		}
+	}
+	macos_font_descriptors = {}
+	reset_text_font_metrics()
+}
+
+@(private="file")
+read_macos_font_descriptor :: proc(bytes: []u8) -> rawptr {
+	if len(bytes) == 0 {
+		return nil
+	}
+	data := CFDataCreate(nil, raw_data(bytes), len(bytes))
+	if data == nil {
+		return nil
+	}
+	defer CFRelease(data)
+	descriptors := CTFontManagerCreateFontDescriptorsFromData(data)
+	if descriptors == nil {
+		return nil
+	}
+	defer CFRelease(descriptors)
+	if CFArrayGetCount(descriptors) != 1 {
+		return nil
+	}
+	return CFRetain(CFArrayGetValueAtIndex(descriptors, 0))
+}
+
 @(private="file")
 create_macos_text_font :: proc(pixels: f32, bold: bool) -> rawptr {
+	if descriptor := macos_font_descriptors[bold ? 1 : 0]; descriptor != nil {
+		if font := CTFontCreateWithFontDescriptor(descriptor, f64(pixels), nil); font != nil {
+			return font
+		}
+	}
 	// kCTFontUIFontEmphasizedSystem and kCTFontUIFontSystem.
 	return CTFontCreateUIFontForLanguage(bold ? 3 : 2, f64(pixels), nil)
 }

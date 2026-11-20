@@ -38,6 +38,9 @@ Showcase :: struct {
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
+	when ODIN_OS == .Darwin {
+		set_showcase_dock_icon()
+	}
 	window := ui.window
 	create_title_bar(&app.title_bar, window)
 	window.key_fallback = {app, showcase_key}

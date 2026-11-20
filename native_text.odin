@@ -39,6 +39,12 @@ font_metrics: [16]Font_Metric
 @(private="file", thread_local)
 next_font_metric: int
 
+@(private="package")
+reset_text_font_metrics :: proc() {
+	font_metrics = {}
+	next_font_metric = 0
+}
+
 text_font_metrics :: proc(pixels: f32, bold: bool) -> (height, line_height: i32) {
 	metric := text_font_metric(pixels, bold)
 	return metric.height, metric.line_height

@@ -112,6 +112,7 @@ vulkan_init :: proc(v: ^Vulkan) -> bool {
 		libraries := [?]string{"vulkan-1.dll"}
 	} else when ODIN_OS == .Darwin {
 		libraries := [?]string{
+			"@executable_path/../Frameworks/libMoltenVK.dylib",
 			"libvulkan.1.dylib", "/opt/homebrew/lib/libvulkan.1.dylib", "/usr/local/lib/libvulkan.1.dylib",
 			"libMoltenVK.dylib", "/opt/homebrew/lib/libMoltenVK.dylib", "/usr/local/lib/libMoltenVK.dylib",
 		}

@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:os"
 import fluid "../.."
 
@@ -16,6 +17,18 @@ main :: proc() {
 	}
 	app := Showcase{scale = scale}
 	defer destroy_notebook(&app.notebook)
+	when ODIN_OS == .Darwin {
+		regular := #load("assets/BricolageGrotesque-Regular.ttf")
+		bold := #load("assets/BricolageGrotesque-Bold.ttf")
+		if !fluid.set_macos_text_fonts(regular, bold) {
+			fmt.eprintln("Cannot load Bricolage Grotesque")
+		}
+	}
+	defer {
+		when ODIN_OS == .Darwin {
+			fluid.clear_macos_text_fonts()
+		}
+	}
 	fluid.run({
 		title = SHOWCASE_TITLE,
 		size = [2]f32{73, 46.5 + TITLE_BAR_HEIGHT} / scale,

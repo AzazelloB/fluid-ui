@@ -15,6 +15,19 @@ Append `-- --large-ui` to try the showcase with larger text and controls.
 Append `-- --remote-navigation` to preview arrow-key focus navigation.
 Use `-- --large-ui --remote-navigation` to combine them.
 
+### Build a local macOS app
+
+Install Odin, MoltenVK, and the Xcode command-line tools. The bundle includes the
+graphics library and fonts and uses an ad hoc signature for local use.
+
+```sh
+brew install odin molten-vk
+examples/showcase/macos/bundle.sh --install
+open "$HOME/Applications/Bamboo Field Station.app"
+```
+
+Omit `--install` to build only `.build/showcase-macos/Bamboo Field Station.app`.
+
 ## Run on Windows (x64)
 
 Install [Odin dev-2026-11a or newer](https://odin-lang.org/docs/install/), Visual Studio Build Tools with

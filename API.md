@@ -72,6 +72,12 @@ All public lengths are plain `f32` values in UI units. One UI unit equals
 sizes and positions, and pointer coordinates use that unit. Display density is
 handled by the platform window and Vulkan renderer.
 
+On macOS, call `set_macos_text_fonts(regular, bold)` on the UI thread before
+creating text to use app-supplied faces. Pass the bytes for one font face per
+argument, such as a TrueType file embedded with `#load`. Call
+`clear_macos_text_fonts()` after destroying the UI to release the faces and
+restore the system font.
+
 Set `Config.ui_scale` to apply an additional positive scale to a window's UI
 units. The same scale applies to drawing, input coordinates, and the requested
 and minimum window sizes. The viewport reports the usable size in UI units,
