@@ -104,6 +104,11 @@ Non-finite pins assert.
 and bottom edges.
 `translated(pins, {dx, dy})` moves both corners without changing size.
 
+Text sizes are numeric UI units. Define named typography sizes in the app.
+Set `Config.background` and `Config.text_color` to supply a window's palette.
+Text inherits the window color unless `set_text_style` supplies one explicitly.
+Use `elements.set_control_palette` to style stock controls and set the track and
+thumb colors on `elements.Scroll_View_Definition` for scrollbars.
 `set_text_style` accepts regular or bold weight and left, center, or right
 alignment. `set_text_wrap(ui, id)` lays text out from the top of its bounds,
 wraps it to the available width, and clips it to the bounds. Use

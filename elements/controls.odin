@@ -19,6 +19,7 @@ Control_Change :: struct {
 Control :: struct {
 	change: fluid.Element_Callback(Control_Change),
 	motion: Button_Motion,
+	palette: Control_Palette,
 	state: Control_State,
 }
 
@@ -115,6 +116,7 @@ get_element :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> Control_View {
 create_control :: proc(window: ^fluid.Window, pins: fluid.Pins, label: string, state: Control_State, cursor: fluid.Cursor = .Default) -> fluid.Element_ID {
 	control := new(Control, os.heap_allocator())
 	control.state = state
+	control.palette = DEFAULT_CONTROL_PALETTE
 	definition := button_definition(pins, label)
 	definition.cursor = cursor
 	input := control_input
@@ -274,8 +276,8 @@ text_control :: proc(window: ^fluid.Window, pins: fluid.Pins, value, placeholder
 		multiline = multiline,
 	}, .Text)
 	fluid.set_style(window.ui, id, {
-		radius = 0.375, border = {64, 77, 94, 255}, border_width = 0.0625,
-		hover_border = {98, 112, 129, 255},
+		radius = 0.375, border = DEFAULT_CONTROL_PALETTE.border, border_width = 0.0625,
+		hover_border = DEFAULT_CONTROL_PALETTE.hover_border,
 	})
 	fluid.set_text_style(window.ui, id, align = .Left)
 	set_text_value(window.ui, id, value)

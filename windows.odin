@@ -13,6 +13,7 @@ Config :: struct {
 	minimum_size: [2]f32,
 	flags:        Window_Flags,
 	background:   Maybe(Color),
+	text_color:   Maybe(Color),
 }
 
 // Window pointers expire on close. Transfer elements before closing
@@ -21,6 +22,7 @@ Window :: struct {
 	ui:               ^UI,
 	viewport:         Element_ID,
 	background:       Color,
+	text_color:       Color,
 	close_requested:  bool,
 	effect:           Window_Effect,
 	clip:             Window_Mask,
@@ -44,11 +46,10 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 		window = new(Window)
 	}
 	window^ = Window{
-		ui = app, background = {17, 23, 32, 255}, minimum_size = config.minimum_size,
+		ui = app, minimum_size = config.minimum_size,
+		background = config.background.? or_else Color{0, 0, 0, 255},
+		text_color = config.text_color.? or_else Color{255, 255, 255, 255},
 		custom_title_bar = .Custom_Title_Bar in config.flags,
-	}
-	if background, specified := config.background.?; specified {
-		window.background = background
 	}
 	if err := virtual.arena_init_growing(&window.storage); err != nil {
 		append(&app.free_windows, window)

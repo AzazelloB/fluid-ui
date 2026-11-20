@@ -12,7 +12,7 @@ create_rectangles :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.rectangles
 	page.navigation = app.sidebar
 	page.stage = track_page_element(&app.page_elements, demo_surface(ui.window, {}, radius = 1.25))
-	page.toggle = track_page_element(&app.page_elements, elements.toggle(ui.window, {}, page.shifted ? "Reset" : "Move", page.shifted))
+	page.toggle = track_page_element(&app.page_elements, demo_control(ui.window, elements.toggle(ui.window, {}, page.shifted ? "Reset" : "Move", page.shifted)))
 	elements.on_change(ui, page.toggle, page, shift_anchor)
 	page.anchor = track_page_element(&app.page_elements, elements.panel(ui.window, {}, {41, 83, 75, 255}))
 	fluid.set_style(ui, page.anchor, {radius = 0.875, border = {106, 179, 156, 255}, border_width = 0.0625, shadow = 0.75})

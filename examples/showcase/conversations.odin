@@ -22,16 +22,16 @@ create_conversations :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page.navigation = app.sidebar
 	sidebar, heading, area := conversations_layout(page, ui)
 	page.sidebar = track_page_element(page.elements, demo_surface(ui.window, sidebar))
-	page.heading = track_page_element(page.elements, demo_text(ui.window, heading, "Conversations", .Heading))
-	page.empty_hint = track_page_element(page.elements, demo_text(ui.window, empty_hint_pins(heading), "No conversations", .Body, MUTED))
+	page.heading = track_page_element(page.elements, demo_text(ui.window, heading, "Conversations", TEXT_HEADING))
+	page.empty_hint = track_page_element(page.elements, demo_text(ui.window, empty_hint_pins(heading), "No conversations", TEXT_BODY, MUTED))
 	page.area = track_page_element(page.elements, demo_surface(ui.window, area, {21, 30, 41, 255}, radius = 1.25))
-	page.subject_label = track_page_element(page.elements, demo_text(ui.window, {}, "Conversation title", .Caption, MUTED))
-	page.subject = track_page_element(page.elements, elements.text_input(ui.window, {}, page.draft, "Optional title"))
+	page.subject_label = track_page_element(page.elements, demo_text(ui.window, {}, "Conversation title", TEXT_CAPTION, MUTED))
+	page.subject = track_page_element(page.elements, demo_control(ui.window, elements.text_input(ui.window, {}, page.draft, "Optional title")))
 	fluid.set_draw(ui, page.subject, demo_field_style)
 	elements.on_change(ui, page.subject, page, set_conversation_subject)
 	layout_composer(page, ui, area)
 	for title, index in page.titles[:min(page.sent, len(page.titles))] {
-		id := track_page_element(page.elements, elements.button(ui.window, conversation_pins(sidebar, heading, index), title, .Secondary))
+		id := track_page_element(page.elements, demo_control(ui.window, elements.button(ui.window, conversation_pins(sidebar, heading, index), title, .Secondary)))
 		page.items[index] = id
 		style_conversation(page, ui, id, title, sidebar, heading)
 		elements.set_button_selected(ui, id, page.selected == index)
@@ -100,7 +100,7 @@ update_conversations :: proc(page: ^Conversations, ui: ^fluid.UI, dt: f64) {
 create_send_button :: proc(page: ^Conversations, ui: ^fluid.UI) {
 	area := fluid.bounds(ui, page.area)
 	send := send_button_pins(area)
-	id := track_page_element(page.elements, elements.button(ui.window, fluid.translated(send, {0, 4}), "New conversation"))
+	id := track_page_element(page.elements, demo_control(ui.window, elements.button(ui.window, fluid.translated(send, {0, 4}), "New conversation")))
 	fluid.set_color(ui, id, {50, 103, 90, 255})
 	fluid.set_style(ui, id, {radius = 0.75, border = {91, 152, 132, 255}, border_width = 0.0625, shadow = 0.625})
 	page.send_button = id

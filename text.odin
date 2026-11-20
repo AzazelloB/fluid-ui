@@ -2,9 +2,6 @@ package fluid
 
 import "core:math"
 
-@(private="package")
-DEFAULT_TEXT_COLOR :: Color{230, 236, 244, 255}
-
 Text_Style :: struct {
 	pixels: f32,
 	bold: bool,
@@ -15,7 +12,7 @@ wrap_width_pixels :: proc(width, scale: f32) -> i32 {
 	return max(i32(1), i32(width * scale))
 }
 
-measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
+measure_text :: proc(window: ^Window, label: string, size: f32 = 1,
 	weight: Text_Weight = .Regular, wrap_width: f32 = 0,
 ) -> (f32, f32) {
 	scale := pixel_scale(window)
@@ -31,14 +28,14 @@ measure_text :: proc(window: ^Window, label: string, size: Text_Size = .Body,
 	return f32(pixels[0]) / scale, f32(pixels[1]) / scale
 }
 
-text_line_height :: proc(window: ^Window, size: Text_Size = .Body, weight: Text_Weight = .Regular) -> f32 {
+text_line_height :: proc(window: ^Window, size: f32 = 1, weight: Text_Weight = .Regular) -> f32 {
 	font := text_font(window, size, weight)
 	_, line_height := text_font_metrics(font.pixels, font.bold)
 	return f32(line_height) / pixel_scale(window)
 }
 
-text_font :: proc(window: ^Window, size: Text_Size, weight: Text_Weight) -> Text_Style {
-	return {text_size_units(size) * pixel_scale(window), weight == .Bold}
+text_font :: proc(window: ^Window, size: f32, weight: Text_Weight) -> Text_Style {
+	return {size * pixel_scale(window), weight == .Bold}
 }
 
 create_text :: proc(font: Text_Style, label: string) -> ^Text {

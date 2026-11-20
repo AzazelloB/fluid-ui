@@ -21,11 +21,11 @@ Element_Appearance :: struct {
 	color:         Color,
 	label:         string,
 	style:         Style,
-	text_size:     Text_Size,
+	text_size:     f32,
 	text_align:    Text_Align,
 	text_weight:   Text_Weight,
 	text_wrap:     bool,
-	text_color:    Color,
+	text_color:    Maybe(Color),
 	text:          ^Text,
 }
 
@@ -40,7 +40,7 @@ ensure_appearance :: proc(app: ^UI, id: Element_ID) -> ^Element_Appearance {
 	_, appearance, inserted, err := map_entry(&app.appearances, id)
 	assert(err == nil)
 	if inserted {
-		appearance.text_color = DEFAULT_TEXT_COLOR
+		appearance.text_size = 1
 	}
 	return appearance
 }
@@ -178,8 +178,8 @@ set_style :: proc(app: ^UI, id: Element_ID, style: Style) {
 	ensure_appearance(app, id).style = style
 }
 
-set_text_style :: proc(app: ^UI, id: Element_ID, size: Text_Size = .Body,
-	color: Color = DEFAULT_TEXT_COLOR, align: Text_Align = .Center,
+set_text_style :: proc(app: ^UI, id: Element_ID, size: f32 = 1,
+	color: Maybe(Color) = nil, align: Text_Align = .Center,
 	weight: Text_Weight = .Regular,
 ) {
 	assert(valid(app, id))

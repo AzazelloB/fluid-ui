@@ -2,16 +2,6 @@ package fluid
 
 UI_UNIT_POINTS :: f32(16)
 
-Text_Size :: enum {Body, Caption, Heading, Title}
-text_size_units :: proc(size: Text_Size) -> f32 {
-	switch size {
-	case .Body: return 1
-	case .Caption: return 0.8
-	case .Heading: return 1.5
-	case .Title: return 2.5
-	}
-	unreachable()
-}
 Text_Align :: enum {Center, Left, Right}
 Text_Weight :: enum {Regular, Bold}
 

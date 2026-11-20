@@ -19,5 +19,6 @@ main :: proc() {
 		size = {62.5, 43.75 + TITLE_BAR_HEIGHT},
 		minimum_size = {56.25, 33.75 + TITLE_BAR_HEIGHT},
 		flags = {.Transparent, .Custom_Title_Bar},
+		background = WINDOW_BACKGROUND, text_color = WINDOW_TEXT,
 	}, &app, create_showcase)
 }

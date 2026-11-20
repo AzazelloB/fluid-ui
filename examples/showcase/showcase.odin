@@ -43,8 +43,8 @@ create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	app.sidebar = elements.panel(ui.window, {}, {21, 29, 40, 255})
 	create_title_bar(&app.title_bar, ui.window)
 	for page, index in showcase_pages {
-		tab := elements.button(ui.window, {}, page.title, .Secondary)
-		fluid.set_text_style(ui, tab, .Body, INK)
+		tab := demo_control(ui.window, elements.button(ui.window, {}, page.title, .Secondary))
+		fluid.set_text_style(ui, tab, TEXT_BODY, INK)
 		app.tabs[index] = tab
 		fluid.on_press(ui, tab, app, select_tab)
 	}
@@ -112,7 +112,7 @@ tab_pins :: proc(sidebar_right: f32, index: int) -> fluid.Pins {
 navigation_width :: proc(ui: ^fluid.UI) -> f32 {
 	width := f32(11.25)
 	for page in showcase_pages {
-		text_width, _ := fluid.measure_text(ui.window, page.title)
+		text_width, _ := fluid.measure_text(ui.window, page.title, TEXT_BODY)
 		width = max(width, text_width + 3.5)
 	}
 	return width

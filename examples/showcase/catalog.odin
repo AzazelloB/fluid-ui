@@ -55,13 +55,13 @@ create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	catalog.navigation = app.sidebar
 	catalog.scrim = track_page_element(&app.page_elements, elements.panel(ui.window, {}, {}))
 	fluid.set_pointer_behavior(ui, catalog.scrim, .Block)
-	catalog.back = track_page_element(&app.page_elements, elements.button(ui.window, {}, "‹ Back"))
+	catalog.back = track_page_element(&app.page_elements, demo_control(ui.window, elements.button(ui.window, {}, "‹ Back")))
 	fluid.set_style(ui, catalog.back, {radius = 1.25})
 	fluid.on_press(ui, catalog.back, catalog, close_catalog_card)
 
 	for product, index in CATALOG_PRODUCTS {
 		card := &catalog.cards[index]
-		card.parts[.Surface] = track_page_element(&app.page_elements, elements.button(ui.window, {}, ""))
+		card.parts[.Surface] = track_page_element(&app.page_elements, demo_control(ui.window, elements.button(ui.window, {}, "")))
 		fluid.set_color(ui, card.parts[.Surface], SURFACE)
 		fluid.set_draw(ui, card.parts[.Surface], elements.draw_default)
 		fluid.on_press(ui, card.parts[.Surface], catalog, open_catalog_card)
@@ -72,16 +72,16 @@ create_catalog :: proc(app: ^Showcase, ui: ^fluid.UI) {
 			card.parts[slot] = track_page_element(&app.page_elements, elements.panel(ui.window, {}, product.shell))
 		}
 		card.parts[.Light] = track_page_element(&app.page_elements, elements.panel(ui.window, {}, product.accent))
-		card.parts[.Name] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.name, .Heading, weight = .Bold))
-		card.parts[.Finish] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.finish, .Caption, MUTED))
+		card.parts[.Name] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.name, TEXT_HEADING, weight = .Bold))
+		card.parts[.Finish] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.finish, TEXT_CAPTION, MUTED))
 		card.parts[.Price] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.price, align = .Right))
-		card.parts[.Description] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.description, .Body, {183, 194, 209, 255}))
+		card.parts[.Description] = track_page_element(&app.page_elements, demo_text(ui.window, {}, product.description, TEXT_BODY, {183, 194, 209, 255}))
 		fluid.set_text_wrap(ui, card.parts[.Description])
 
 		card.specs = {
-			track_page_element(&app.page_elements, demo_text(ui.window, {}, "BATTERY", .Caption, MUTED)),
+			track_page_element(&app.page_elements, demo_text(ui.window, {}, "BATTERY", TEXT_CAPTION, MUTED)),
 			track_page_element(&app.page_elements, demo_text(ui.window, {}, product.battery, weight = .Bold)),
-			track_page_element(&app.page_elements, demo_text(ui.window, {}, "WEIGHT", .Caption, MUTED)),
+			track_page_element(&app.page_elements, demo_text(ui.window, {}, "WEIGHT", TEXT_CAPTION, MUTED)),
 			track_page_element(&app.page_elements, demo_text(ui.window, {}, product.weight, weight = .Bold)),
 		}
 	}
@@ -149,7 +149,7 @@ catalog_detail_layout :: proc(viewport: fluid.Pins, window: ^fluid.Window, descr
 	w := viewport.right - left - x
 	layout[.Surface] = viewport
 	layout[.Backdrop] = art
-	_, description_height := fluid.measure_text(window, description, wrap_width = w)
+	_, description_height := fluid.measure_text(window, description, TEXT_BODY, wrap_width = w)
 	layout_catalog_copy(&layout, x, y, w, description_height)
 	return layout
 }
@@ -215,7 +215,7 @@ layout_catalog_specs :: proc(ui: ^fluid.UI, card: ^Catalog_Card, description: fl
 		value := i % 2 != 0
 		color := value ? INK : MUTED
 		color.a = u8(255 * opacity)
-		fluid.set_text_style(ui, id, value ? .Body : .Caption, color, .Left, value ? .Bold : .Regular)
+		fluid.set_text_style(ui, id, value ? TEXT_BODY : TEXT_CAPTION, color, .Left, value ? .Bold : .Regular)
 		fluid.set_layout(ui, id, pins[i])
 	}
 }
@@ -262,7 +262,7 @@ update_catalog :: proc(catalog: ^Catalog, ui: ^fluid.UI, dt: f64) {
 					fluid.focus(ui, catalog.back)
 				}
 				fluid.set_color(ui, catalog.back, {24, 33, 45, alpha})
-				fluid.set_text_style(ui, catalog.back, .Body, {INK.r, INK.g, INK.b, alpha})
+				fluid.set_text_style(ui, catalog.back, TEXT_BODY, {INK.r, INK.g, INK.b, alpha})
 			}
 		}
 		layout_catalog_art(ui, card, &layout, progress)

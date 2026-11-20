@@ -15,6 +15,7 @@ Scroll_View_Definition :: struct {
 	pins: fluid.Pins,
 	color: fluid.Color,
 	style: fluid.Style,
+	track_color, thumb_color: Maybe(fluid.Color),
 	stick_to_end: bool,
 	state: rawptr,
 	draw: proc(state: rawptr, viewport: Scroll_Viewport),
@@ -23,6 +24,7 @@ Scroll_View_Definition :: struct {
 
 @(private="file")
 Scroll_State :: struct {
+	track_color, thumb_color: fluid.Color,
 	data: rawptr,
 	draw: proc(state: rawptr, viewport: Scroll_Viewport),
 	release_graphics: proc(state: rawptr),
@@ -38,6 +40,8 @@ create_scroll_view :: proc(window: ^fluid.Window, definition: Scroll_View_Defini
 	state := new(Scroll_State, os.heap_allocator())
 	state^ = {
 		data = definition.state, draw = definition.draw, release_graphics = definition.release_graphics,
+		track_color = definition.track_color.? or_else fluid.Color{48, 48, 48, 255},
+		thumb_color = definition.thumb_color.? or_else fluid.Color{160, 160, 160, 255},
 		unit_height = 1, stick_to_end = definition.stick_to_end, following = definition.stick_to_end,
 	}
 	return fluid.create_element(window, {
@@ -236,8 +240,8 @@ draw_scroll_view :: proc(view: fluid.Element_View) {
 		view.color, view.hovered, view.focused, layout.scale)
 	if layout.clip.w == 0 || layout.clip.h == 0 { return }
 	if layout.last > state.first {
-		fluid.render_fill_rect(renderer, fluid.pixel_rect(layout.track, layout.scale), {30, 42, 57, 255})
-		fluid.render_fill_rect(renderer, fluid.pixel_rect(scroll_thumb(state, layout), layout.scale), {139, 157, 178, 255})
+		fluid.render_fill_rect(renderer, fluid.pixel_rect(layout.track, layout.scale), state.track_color)
+		fluid.render_fill_rect(renderer, fluid.pixel_rect(scroll_thumb(state, layout), layout.scale), state.thumb_color)
 	}
 	previous := fluid.render_clip(renderer, layout.clip)
 	defer fluid.restore_render_clip(renderer, previous)

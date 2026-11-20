@@ -10,7 +10,7 @@ Element_View :: struct {
 	label: string,
 	color: Color,
 	style: Style,
-	text_size: Text_Size,
+	text_size: f32,
 	text_align: Text_Align,
 	text_weight: Text_Weight,
 	text_wrap: bool,
@@ -28,14 +28,14 @@ element_view :: proc(ui: ^UI, id: Element_ID) -> Element_View {
 make_element_view :: proc(ui: ^UI, id: Element_ID, element: ^Element) -> Element_View {
 	view := Element_View{
 		ui = ui, id = id, window = element.window, pins = element.pins,
-		text_color = DEFAULT_TEXT_COLOR,
+		text_size = 1, text_color = element.window.text_color,
 		hovered = ui.hovered == id, pressed = ui.pressed == id, focused = ui.focused == id,
 	}
 	if appearance := element_appearance(ui, id); appearance != nil {
 		view.label, view.color, view.style = appearance.label, appearance.color, appearance.style
 		view.text_size, view.text_align, view.text_weight = appearance.text_size, appearance.text_align, appearance.text_weight
 		view.text_wrap, view.surface = appearance.text_wrap, appearance.surface
-		view.text_color = appearance.text_color
+		view.text_color = appearance.text_color.? or_else view.text_color
 	}
 	return view
 }

@@ -15,7 +15,7 @@ create_bamboo :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.bamboo
 	page.sidebar = app.sidebar
 	page.background = track_page_element(&app.page_elements, fluid.create_element(ui.window, {draw = draw_bamboo, behavior = {state = page}}))
-	page.wind = track_page_element(&app.page_elements, elements.button(ui.window, {}, page.paused ? "Resume wind" : "Pause wind"))
+	page.wind = track_page_element(&app.page_elements, demo_control(ui.window, elements.button(ui.window, {}, page.paused ? "Resume wind" : "Pause wind")))
 	fluid.set_color(ui, page.wind, {20, 42, 32, 224})
 	fluid.set_style(ui, page.wind, {
 		radius = 0.625, border = {91, 121, 93, 200}, hover_border = {146, 179, 128, 255}, border_width = 0.0625,

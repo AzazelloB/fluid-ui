@@ -36,7 +36,7 @@ Button_Motion :: struct {
 }
 
 @(private="package")
-button_frame :: proc(view: fluid.Element_View, motion: ^Button_Motion, secondary: bool, now: u64, selected: bool = false) -> fluid.Element_View {
+button_frame :: proc(view: fluid.Element_View, motion: ^Button_Motion, palette: Control_Palette, secondary: bool, now: u64, selected: bool = false) -> fluid.Element_View {
 	view := view
 	selected_amount := selected ? f32(1) : 0
 	hovered := view.hovered ? f32(1) : 0
@@ -53,12 +53,14 @@ button_frame :: proc(view: fluid.Element_View, motion: ^Button_Motion, secondary
 	emphasis := tween_to(&motion.emphasis, selected_amount, now, DURATION)
 	hover := tween_to(&motion.hover, hovered, now, DURATION)
 	press := tween_to(&motion.press, pressed, now, DURATION)
-	view.style = button_style(view.style)
+	if view.style.focus_border == nil {
+		view.style.focus_border = palette.focus
+	}
 	if border, styled := view.style.hover_border.?; styled {
 		view.style.border = mix_color(view.style.border, border, hover)
 		view.style.hover_border = nil
 	}
-	view.color = button_color(view.color, emphasis, hover, press)
+	view.color = button_color(view.color, palette.selected, emphasis, hover, press)
 	if secondary {
 		opacity := max(emphasis, hover, press)
 		view.surface = opacity > 0
@@ -70,12 +72,12 @@ button_frame :: proc(view: fluid.Element_View, motion: ^Button_Motion, secondary
 }
 
 @(private="package")
-button_color :: proc(base: fluid.Color, emphasis, hover, press: f32) -> fluid.Color {
+button_color :: proc(base, selected: fluid.Color, emphasis, hover, press: f32) -> fluid.Color {
 	delta := 12 * hover * (1 - press) - 8 * press
 	return {
-		u8(clamp(f32(base.r) + (44 - f32(base.r)) * emphasis + delta, 0, 255)),
-		u8(clamp(f32(base.g) + (78 - f32(base.g)) * emphasis + delta, 0, 255)),
-		u8(clamp(f32(base.b) + (75 - f32(base.b)) * emphasis + delta, 0, 255)),
+		u8(clamp(f32(base.r) + (f32(selected.r) - f32(base.r)) * emphasis + delta, 0, 255)),
+		u8(clamp(f32(base.g) + (f32(selected.g) - f32(base.g)) * emphasis + delta, 0, 255)),
+		u8(clamp(f32(base.b) + (f32(selected.b) - f32(base.b)) * emphasis + delta, 0, 255)),
 		base.a,
 	}
 }

@@ -26,14 +26,14 @@ create_docking :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	page := &app.docking
 	page.navigation = app.sidebar
 	page.area = track_page_element(&app.page_elements, demo_surface(ui.window, {}, radius = 1.25))
-	page.placement = track_page_element(&app.page_elements, elements.options(ui.window, {}, {"Free", "Left", "Right", "Bottom"}, 0))
+	page.placement = track_page_element(&app.page_elements, demo_control(ui.window, elements.options(ui.window, {}, {"Free", "Left", "Right", "Bottom"}, 0)))
 	elements.on_change(ui, page.placement, page, choose_dock)
 	labels := [Dock]string{.Left = "Left", .Right = "Right", .Bottom = "Bottom"}
 	for dock in Dock {
 		page.zones[dock] = track_page_element(&app.page_elements, demo_surface(ui.window, {}, DOCK_COLOR))
 		fluid.set_hidden(ui, page.zones[dock])
 		fluid.set_label(ui, page.zones[dock], labels[dock])
-		fluid.set_text_style(ui, page.zones[dock], .Body, MUTED)
+		fluid.set_text_style(ui, page.zones[dock], TEXT_BODY, MUTED)
 	}
 	layout_docking(page, ui, showcase_body(ui))
 	area := fluid.bounds(ui, page.area)
@@ -76,6 +76,7 @@ detach_card :: proc(page: ^Docking, ui: ^fluid.UI, mouse: [2]f32) {
 			size = CARD_SIZE,
 			minimum_size = {7.5, 5},
 			flags = {.Hidden, .Borderless},
+			background = WINDOW_BACKGROUND, text_color = WINDOW_TEXT,
 		})
 		if window == nil {
 			page.detach_failed = true

@@ -46,18 +46,18 @@ draw_control :: proc(view: fluid.Element_View) {
 	now := fluid.monotonic_ns()
 	switch &state in control.state {
 	case Choice_Control:
-		draw_choice(view, &state, now)
+		draw_choice(view, &state, control.palette, now)
 	case Button_Control:
-		draw_default(button_frame(view, &control.motion, state.variant == .Secondary, now, state.selected))
+		draw_default(button_frame(view, &control.motion, control.palette, state.variant == .Secondary, now, state.selected))
 	case Toggle_Control:
-		draw_default(button_frame(view, &control.motion, true, now, state.checked))
+		draw_default(button_frame(view, &control.motion, control.palette, true, now, state.checked))
 	case Number_Control, Text_Control:
 		draw_field(view)
 	case Guard_Control:
-		frame := button_frame(view, &control.motion, false, now)
+		frame := button_frame(view, &control.motion, control.palette, false, now)
 		draw_element_surface(frame)
 		scale := fluid.pixel_scale(frame.window)
-		draw_guard(frame.window.renderer, fluid.pixel_rect(frame.pins, scale), frame.style.radius * scale, &state, now)
+		draw_guard(frame.window.renderer, fluid.pixel_rect(frame.pins, scale), frame.style.radius * scale, &state, now, control.palette.confirmation)
 		draw_element_label(frame)
 	}
 }
@@ -67,26 +67,26 @@ Field_Text_Style :: struct {
 }
 
 DEFAULT_FIELD_TEXT_STYLE :: Field_Text_Style{
-	placeholder = {139, 157, 178, 255},
-	selection = {74, 117, 142, 255},
-	caret = {174, 230, 213, 255},
+	placeholder = {160, 160, 160, 255},
+	selection = {90, 90, 90, 255},
+	caret = {224, 224, 224, 255},
 }
 
 // Apply the shared field interaction animation to caller-provided styling.
-draw_field :: proc(view: fluid.Element_View, style: Field_Text_Style = DEFAULT_FIELD_TEXT_STYLE) {
+draw_field :: proc(view: fluid.Element_View, style: Maybe(Field_Text_Style) = nil) {
 	control := get_control(view.ui, view.id)
-	frame := button_frame(view, &control.motion, false, fluid.monotonic_ns())
+	frame := button_frame(view, &control.motion, control.palette, false, fluid.monotonic_ns())
 	draw_element_surface(frame)
 	draw_field_text(frame, style)
 }
 
 // Draw a field's text, placeholder, selection, caret, and composition using
 // the supplied text style. A custom draw callback can paint its own surface.
-draw_field_text :: proc(view: fluid.Element_View, style: Field_Text_Style = DEFAULT_FIELD_TEXT_STYLE) {
+draw_field_text :: proc(view: fluid.Element_View, style: Maybe(Field_Text_Style) = nil) {
 	control := get_control(view.ui, view.id)
 	if control != nil {
 		if editor := editor_for(control); editor != nil {
-			draw_editor({view, control}, editor, style)
+			draw_editor({view, control}, editor, style.? or_else control.palette.field)
 			return
 		}
 	}
@@ -138,7 +138,7 @@ visible_choice_slot :: proc(pins: fluid.Pins, choice: ^Choice_Control, slot: int
 }
 
 @(private="package")
-draw_guard :: proc(renderer: ^fluid.Renderer, pixels: fluid.FRect, radius: f32, guard: ^Guard_Control, now: u64) {
+draw_guard :: proc(renderer: ^fluid.Renderer, pixels: fluid.FRect, radius: f32, guard: ^Guard_Control, now: u64, color: fluid.Color) {
 	progress := visible_guard_progress(guard, now)
 	if progress <= 0 {
 		return
@@ -147,12 +147,12 @@ draw_guard :: proc(renderer: ^fluid.Renderer, pixels: fluid.FRect, radius: f32, 
 	fill.w *= progress
 	clip := fluid.IRect{i32(fill.x), i32(fill.y), i32(fill.w), i32(fill.h)}
 	previous_clip := fluid.render_clip(renderer, clip)
-	fluid.rounded_fill(renderer, pixels, radius, {238, 157, 133, 100})
+	fluid.rounded_fill(renderer, pixels, radius, color)
 	fluid.restore_render_clip(renderer, previous_clip)
 }
 
 @(private="package")
-draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u64) {
+draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, palette: Control_Palette, now: u64) {
 	window := element.window
 	scale := fluid.pixel_scale(window)
 	count := choice_slot_count(choice)
@@ -186,7 +186,7 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, now: u
 					view.style.square_corners |= {.Top_Right, .Bottom_Right}
 				}
 			}
-			draw_element_surface(button_frame(view, &item.motion, !choice.neighbors, now, slot.selected))
+			draw_element_surface(button_frame(view, &item.motion, palette, !choice.neighbors, now, slot.selected))
 		}
 		if item.label == "" {
 			continue

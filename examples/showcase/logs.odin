@@ -65,13 +65,14 @@ create_logs :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	advance_logs(page, now)
 	page.sample_start, page.sampled_at = page.next, now
 	page.draw_ns, page.draws = 0, 0
-	page.status = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Following latest", .Body, MINT))
-	page.pause = track_page_element(&app.page_elements, elements.button(ui.window, {}, page.paused ? "Resume" : "Pause"))
-	page.latest = track_page_element(&app.page_elements, elements.button(ui.window, {}, "Jump to latest", .Secondary))
-	page.metrics = track_page_element(&app.page_elements, demo_text(ui.window, {}, "", .Caption, MUTED))
+	page.status = track_page_element(&app.page_elements, demo_text(ui.window, {}, "Following latest", TEXT_BODY, MINT))
+	page.pause = track_page_element(&app.page_elements, demo_control(ui.window, elements.button(ui.window, {}, page.paused ? "Resume" : "Pause")))
+	page.latest = track_page_element(&app.page_elements, demo_control(ui.window, elements.button(ui.window, {}, "Jump to latest", .Secondary)))
+	page.metrics = track_page_element(&app.page_elements, demo_text(ui.window, {}, "", TEXT_CAPTION, MUTED))
 	page.view = track_page_element(&app.page_elements, elements.create_scroll_view(ui.window, {
 		color = {14, 20, 29, 255},
 		style = {radius = 0.75, border = EDGE, border_width = 0.0625, focus_border = MINT},
+		track_color = SCROLL_TRACK, thumb_color = MUTED,
 		stick_to_end = true, state = page, draw = draw_logs, release_graphics = release_log_text,
 	}))
 	fluid.on_press(ui, page.pause, page, toggle_log_stream)
@@ -101,7 +102,7 @@ update_logs :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	fluid.set_target(ui, page.metrics, {area.left, area.bottom - 1.75, area.right, area.bottom})
 	now := fluid.monotonic_ns()
 	advance_logs(page, now)
-	font := fluid.text_font(ui.window, .Caption, .Regular)
+	font := fluid.text_font(ui.window, TEXT_CAPTION, .Regular)
 	row_height := fluid.text_line_advance(font) / f64(fluid.pixel_scale(ui.window))
 	elements.set_scroll_content(ui, page.view, f64(page.next - LOG_HISTORY), f64(page.next), row_height)
 	following := elements.scroll_follows_end(ui, page.view)
@@ -142,7 +143,7 @@ draw_logs :: proc(state: rawptr, viewport: elements.Scroll_Viewport) {
 	window := viewport.element.window
 	renderer := window.renderer
 	scale := fluid.pixel_scale(window)
-	font := fluid.text_font(window, .Caption, .Regular)
+	font := fluid.text_font(window, TEXT_CAPTION, .Regular)
 	first, end := i64(math.floor(viewport.first)), i64(math.ceil(viewport.end))
 	text := &page.text
 	if text.messages == nil || first < text.first || end > text.first + i64(text.rows) {
