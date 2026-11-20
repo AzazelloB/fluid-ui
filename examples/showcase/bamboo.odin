@@ -50,6 +50,12 @@ update_bamboo :: proc(app: ^Showcase, ui: ^fluid.UI, stage: fluid.Pins, dt: f64)
 	fluid.set_target(ui, scene.ring, marker_ring_pins(scene, ui, app.site))
 }
 
+clear_canopy_layout :: proc(scene: ^Bamboo, ui: ^fluid.UI) {
+	fluid.set_layout(ui, scene.background, {})
+	fluid.set_layout(ui, scene.ring, {})
+	for id in scene.markers { fluid.set_layout(ui, id, {}) }
+}
+
 draw_marker :: proc(view: fluid.Element_View) {
 	app := cast(^Showcase)fluid.element_behavior(view.ui, view.id).state
 	site := app.site

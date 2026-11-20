@@ -18,6 +18,8 @@ Station_Panels :: struct {
 	card_progress: f32,
 	forest_motion: f64,
 	week_day: int,
+	week_column: int,
+	short_week_labels: bool,
 	week_site: Site,
 	week_ranges: [7][2]f32,
 	week_labels: [7]^fluid.Text,
@@ -36,7 +38,7 @@ create_station_panels :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	p.habitat = field_text(w, "", 1.05, MUTED)
 	fluid.set_text_wrap(ui, p.habitat)
 	p.week_title = field_text(w, "Soil moisture · seven-day range", 1.05, INK, .Bold)
-	p.week = fluid.create_element(w, {draw = draw_station_week,
+	p.week = fluid.create_element(w, {draw = draw_station_week, focusable = true,
 		behavior = {state = app, input = station_week_input, release_graphics = release_week_graphics}})
 	p.back = field_button(w, "", .Secondary)
 	fluid.set_draw(ui, p.back, draw_station_back)
@@ -63,10 +65,18 @@ press_station_panel :: proc(app: ^Showcase, ui: ^fluid.UI, id: fluid.Element_ID)
 	switch id {
 	case p.card:
 		p.card_open = true
+		app.focus_target = p.back
 	case p.back:
-		if p.settings_open { p.settings_open = false } else { p.card_open = false }
+		if p.settings_open {
+			p.settings_open = false
+			app.focus_target = p.card_open ? p.back : app.title_bar.settings
+		} else {
+			p.card_open = false
+			app.focus_target = p.card
+		}
 	case:
 		p.settings_open = !p.settings_open
+		app.focus_target = p.settings_open || p.card_open ? p.back : app.title_bar.settings
 	}
 	// A previously dragged notebook may be above the page elements.
 	for element in ([]fluid.Element_ID{p.page, p.card, p.artwork, p.heading, p.caption, p.habitat,
@@ -106,10 +116,11 @@ update_station_panels :: proc(app: ^Showcase, ui: ^fluid.UI, canopy, area: fluid
 	fluid.set_hidden(ui, p.page, !p.settings_open && p.card_progress == 0)
 	fluid.set_hidden(ui, p.back, !p.settings_open && !details)
 	fluid.set_layout(ui, p.back, fluid.rect(area.left, area.top + 0.78, 2.6, 2.4))
-	for id in ([]fluid.Element_ID{p.card, p.artwork, p.heading}) {
-		fluid.set_hidden(ui, id, p.settings_open)
-	}
-	fluid.set_hidden(ui, p.caption, p.settings_open || p.card_progress > 0.24)
+	show_card := !p.settings_open && (!app.compact || app.workspace_view == .Canopy || p.card_progress > 0)
+	fluid.set_hidden(ui, p.card, !show_card || p.card_progress >= 1)
+	fluid.set_hidden(ui, p.artwork, !show_card)
+	fluid.set_hidden(ui, p.heading, !show_card)
+	fluid.set_hidden(ui, p.caption, !show_card || p.card_progress > 0.24)
 	fluid.set_hidden(ui, p.habitat, !details)
 	chart_opacity := week_opacity(p)
 	fluid.set_hidden(ui, p.week_title, p.settings_open || chart_opacity == 0)
@@ -127,37 +138,74 @@ update_station_panels :: proc(app: ^Showcase, ui: ^fluid.UI, canopy, area: fluid
 	}
 
 	preview := fluid.rect(canopy.left + 0.85, canopy.bottom - 4.5, 13, 3.75)
-	hero := fluid.rect(area.left, area.top + 4, fluid.width(area) * 0.57, clamp(fluid.height(area) * 0.43, 13, 20))
+	stacked := fluid.width(area) < 40
+	hero := fluid.rect(area.left, area.top + 3.8, fluid.width(area) * 0.57, clamp(fluid.height(area) * 0.43, 9, 20))
+	if stacked {
+		hero.right = area.right
+		hero.bottom = hero.top + clamp(fluid.height(area) * 0.21, 4, 12)
+	}
 	frame := lerp_pins(preview, hero, progress)
 	fluid.set_layout(ui, p.card, frame)
-	fluid.set_hidden(ui, p.card, p.card_progress >= 1)
 	fluid.set_pointer_behavior(ui, p.card, p.card_progress > 0 ? .Block : .Auto)
 	fluid.set_layout(ui, p.artwork, lerp_pins(fluid.rect(preview.left + 0.4, preview.top + 0.4, 3, 2.95), hero, progress))
 
 	site := sites[app.site]
 	fluid.set_label(ui, p.heading, site.name)
-	fluid.set_text_style(ui, p.heading, 1 + progress * 1.1, INK, .Left, .Bold)
+	fluid.set_text_style(ui, p.heading, 1 + progress * (stacked ? 0.65 : 1.1), INK, .Left, .Bold)
+	heading_target := fluid.Pins{hero.right + 1.6, hero.top + 2.4, area.right, hero.top + 5.4}
+	habitat_bottom := hero.bottom
+	if stacked {
+		heading_target = fluid.rect(area.left, hero.bottom + 0.35, fluid.width(area), 2)
+		habitat_bottom = heading_target.bottom + 4.2
+	}
 	heading := lerp_pins(fluid.rect(preview.left + 3.95, preview.top + 0.5, 8.7, 1.6),
-		{hero.right + 1.6, hero.top + 2.4, area.right, hero.top + 5.4}, progress)
+		heading_target, progress)
 	fluid.set_layout(ui, p.heading, heading)
 	fluid.set_layout(ui, p.caption, fluid.rect(preview.left + 3.95, preview.top + 2, 8.7, 1))
 	fluid.set_label(ui, p.habitat, habitats[app.site])
-	fluid.set_layout(ui, p.habitat, {heading.left, heading.bottom + 0.9, area.right - 0.5, hero.bottom})
+	fluid.set_text_style(ui, p.habitat, stacked ? TEXT_BODY : 1.05, MUTED)
+	fluid.set_layout(ui, p.habitat, {heading.left, heading.bottom + (stacked ? 0.25 : 0.9), area.right - 0.5, habitat_bottom})
 	offset := (1 - chart_opacity) * 0.65
-	fluid.set_layout(ui, p.week_title, {area.left, hero.bottom + 1.1 + offset, area.right, hero.bottom + 3.1 + offset})
-	fluid.set_layout(ui, p.week, {area.left, hero.bottom + 3.25 + offset, area.right, area.bottom + offset})
+	week_top := habitat_bottom + 0.45 + offset
+	fluid.set_layout(ui, p.week_title, {area.left, week_top, area.right, week_top + 1.6})
+	fluid.set_layout(ui, p.week, {area.left, week_top + 1.7, area.right, area.bottom})
+	week_title := "Soil moisture · seven-day range"
+	if p.card_progress == 1 && fluid.width(area) < 38 {
+		week := fluid.element_view(ui, p.week)
+		column := p.week_column
+		if week.hovered {
+			column = week_column_at(week.pins, fluid.pointer_position(ui.window))
+		}
+		if week.focus_visible || week.hovered {
+			range := p.week_ranges[column]
+			week_title = fmt.tprintf("D%d · Soil moisture %.0f–%.0f%%", p.week_day - 6 + column, range.x, range.y)
+		}
+	}
+	fluid.set_label(ui, p.week_title, week_title)
 }
 
 layout_station_settings :: proc(p: ^Station_Panels, ui: ^fluid.UI, area: fluid.Pins) {
 	x := area.left + 3.5
 	y := area.top + 0.45
+	compact := fluid.width(area) < 28
+	if compact { x = area.left }
 	right := min(area.right, x + 23.5)
-	fluid.set_layout(ui, p.settings_title, {x, y, right, y + 2.9})
-	fluid.set_layout(ui, p.settings_art, {right + 2.5, y + 5.5, area.right, y + 17.5})
+	fluid.set_layout(ui, p.settings_title, {area.left + 3.5, y, right, y + 2.9})
+	art := fluid.Pins{}
+	if area.right - right >= 13 {
+		art = {right + 2.5, y + 5.5, area.right, y + 17.5}
+	}
+	fluid.set_layout(ui, p.settings_art, art)
 	labels := [3]fluid.Element_ID{p.rate_label, p.smoothing_label, p.motion_label}
 	controls := [3]fluid.Element_ID{p.rate, p.smoothing, p.motion}
 	for label, i in labels {
 		top := y + 5.5 + f32(i) * 3.5
+		if compact {
+			top = y + 3.8 + f32(i) * 4.8
+			fluid.set_layout(ui, label, fluid.rect(x, top, right - x, 1.55))
+			fluid.set_layout(ui, controls[i], fluid.rect(x, top + 1.65, i == 0 ? 13.25 : 6, 2.5))
+			continue
+		}
 		fluid.set_layout(ui, label, fluid.rect(x, top, 9.75, 2.5))
 		width := i == 0 ? f32(13.25) : 6
 		fluid.set_layout(ui, controls[i], fluid.rect(x + 10.25, top, width, 2.5))
@@ -189,6 +237,11 @@ draw_station_week :: proc(view: fluid.Element_View) {
 	app := cast(^Showcase)fluid.element_behavior(view.ui, view.id).state
 	p := &app.panels
 	day := displayed_sample(&app.telemetry) / SAMPLES_PER_DAY
+	short := fluid.width(view.pins) < 38
+	if short != p.short_week_labels {
+		release_week_graphics(app)
+		p.short_week_labels = short
+	}
 	if day != p.week_day || app.site != p.week_site {
 		release_week_graphics(app)
 		p.week_day, p.week_site = day, app.site
@@ -205,7 +258,7 @@ draw_station_week :: proc(view: fluid.Element_View) {
 	scale := fluid.pixel_scale(window)
 	pixels := fluid.pixel_rect(view.pins, scale)
 	gap := pixels.w / 7
-	usable := max(0, pixels.h - 2.25 * scale)
+	usable := max(0, pixels.h - 1.65 * scale)
 	lo := sites[app.site].moisture - 15
 	color := sites[app.site].color
 	opacity := week_opacity(p)
@@ -216,7 +269,8 @@ draw_station_week :: proc(view: fluid.Element_View) {
 		column := pixels.x + f32(i) * gap
 		width := min(2.9 * scale, gap * 0.48)
 		left := column + (gap - width) / 2
-		hovered := view.hovered && pointer.x >= column && pointer.x < column + gap
+		hovered := (view.hovered && pointer.x >= column && pointer.x < column + gap) ||
+			(view.focus_visible && i == p.week_column)
 		bar := color
 		bar.a = u8((hovered ? f32(255) : 207) * opacity)
 		label_color := hovered ? INK : MUTED
@@ -227,24 +281,41 @@ draw_station_week :: proc(view: fluid.Element_View) {
 		height := max(2, (range.y - range.x) / 30 * usable)
 		fluid.rounded_fill(window.renderer, {left, top, width, height}, 0.35 * scale, bar)
 		font := fluid.text_font(window, TEXT_SMALL, .Regular)
-		text := fluid.cached_text(&p.week_labels[i], font,
-			fmt.tprintf("D%d   %.0f–%.0f%%", day - 6 + i, range.x, range.y))
+		label := short ? fmt.tprintf("D%d", day - 6 + i) : fmt.tprintf("D%d   %.0f–%.0f%%", day - 6 + i, range.x, range.y)
+		text := fluid.cached_text(&p.week_labels[i], font, label)
 		fluid.draw_label(window, text, fluid.rect((pixels.x + f32(i) * gap) / scale,
 			bottom / scale + 0.35, gap / scale, 1.25), label_color, .Center)
 	}
 }
 
 station_week_input :: proc(state: rawptr, ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Element_Event) -> bool {
-	pointer, ok := event.(fluid.Pointer_Event)
-	if !ok || pointer.kind != .Down { return false }
 	app := cast(^Showcase)state
-	pins := fluid.bounds(ui, id)
-	fraction := (pointer.point.x - pins.left) / fluid.width(pins)
-	column := clamp(int(fraction * 7), 0, 6)
-	sample := (app.panels.week_day - 7 + column) * SAMPLES_PER_DAY + SAMPLES_PER_DAY / 2
+	p := &app.panels
+	#partial switch value in event {
+	case fluid.Pointer_Event:
+		if value.kind != .Down { return false }
+		p.week_column = week_column_at(fluid.bounds(ui, id), value.point)
+	case fluid.Keyboard_Event:
+		if !value.down { return false }
+		#partial switch value.key {
+		case .Left, .Right:
+			p.week_column = clamp(p.week_column + (value.key == .Left ? -1 : 1), 0, 6)
+			return true
+		case .Enter, .Space, .Keypad_Enter:
+		case: return false
+		}
+	case: return false
+	}
+	sample := (p.week_day - 7 + p.week_column) * SAMPLES_PER_DAY + SAMPLES_PER_DAY / 2
 	app.panels.card_open = false
 	open_reading(&app.telemetry, ui, sample)
+	app.workspace_view = .Readings
+	app.focus_target = app.telemetry.chart
 	return true
+}
+
+week_column_at :: proc(pins: fluid.Pins, point: [2]f32) -> int {
+	return clamp(int((point.x - pins.left) / fluid.width(pins) * 7), 0, 6)
 }
 
 release_week_graphics :: proc(state: rawptr) {

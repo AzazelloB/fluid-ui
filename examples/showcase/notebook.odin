@@ -74,7 +74,7 @@ create_notebook :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	p[.Title] = field_text(window, "Notebook", 1.1, INK, .Bold)
 	p[.List] = create_notebook_list(n, ui)
 	p[.List_Input] = fluid.create_element(window, {
-		focusable = true, behavior = {state = n, input = note_list_input},
+		focusable = true, draw = draw_note_list_focus, behavior = {state = n, input = note_list_input},
 	})
 	p[.Editor_Title] = field_text(window, "", TEXT_BODY, INK, .Bold)
 	p[.Editor] = field_control(window, elements.text_area(window, {}, "", ""), TEXT_BODY)
@@ -149,6 +149,8 @@ inspect_entry_reading :: proc(n: ^Notebook, ui: ^fluid.UI, id: fluid.Element_ID)
 		n.owner.panels.settings_open = false
 		n.owner.panels.card_open = false
 		open_reading(&n.owner.telemetry, ui, journal.entries[index].sample)
+		n.owner.workspace_view = .Readings
+		n.owner.focus_target = n.owner.telemetry.chart
 	}
 }
 
@@ -222,17 +224,36 @@ notebook_layout :: proc(n: ^Notebook, r: fluid.Pins) -> [Notebook_Part]fluid.Pin
 	layout[.Handle] = fluid.rect(r.left, y, fluid.width(r), 3.2)
 	layout[.Grip] = fluid.rect(x, y + 0.6, 0.85, 2)
 	layout[.Title] = fluid.rect(x + 1.1, y + 0.58, w - 1.1, 2)
+	compact := n.owner.compact && n.window == nil
+	if compact {
+		layout[.Handle], layout[.Grip] = {}, {}
+		layout[.Title].left = x
+	}
 	count := len(n.journals[n.site].entries)
-	list_height := 1.08 + NOTE_ROW_HEIGHT * f32(min(count, 6))
+	rows := min(count, 6)
+	editor_bottom := r.bottom - 5.05
+	if compact {
+		// Keep rows whole and leave room to write even at the minimum height.
+		capacity := max(1, int((fluid.height(r) - 14.55) / NOTE_ROW_HEIGHT))
+		rows = min(rows, capacity)
+		editor_bottom += 0.45
+	}
+	list_height := 1.08 + NOTE_ROW_HEIGHT * f32(rows)
 	layout[.List] = fluid.rect(x - 0.5, y + 3.05, w + 1, list_height)
 	layout[.List_Input] = note_content_pins(layout[.List])
 	cursor := layout[.List].bottom + 0.85
 	layout[.Editor_Title] = fluid.rect(x, cursor, w - 5.3, 1.4)
 	layout[.New] = fluid.rect(right - 2, y + 0.6, 2, 2)
-	layout[.Editor] = {x, cursor + 1.8, right, r.bottom - 5.05}
-	layout[.Feedback] = fluid.rect(x, r.bottom - 4.85, w, 1.1)
+	layout[.Editor] = {x, cursor + 1.8, right, editor_bottom}
+	layout[.Feedback] = fluid.rect(x, editor_bottom, w, 1.1)
 	layout[.Reading] = fluid.rect(x, r.bottom - 3.24, 7.3, 2.3)
 	return layout
+}
+
+clear_notebook_layout :: proc(n: ^Notebook, ui: ^fluid.UI) {
+	for id in n.parts { fluid.set_layout(ui, id, {}) }
+	fluid.set_layout(ui, n.save, {})
+	fluid.set_layout(ui, n.arriving_text, {})
 }
 
 note_arrival_target :: proc(n: ^Notebook, panel: fluid.Pins) -> fluid.Pins {
@@ -277,7 +298,7 @@ update_notebook :: proc(app: ^Showcase, ui: ^fluid.UI, area: fluid.Pins, dt: f64
 	}
 	inside: bool
 	side: Dock_Side
-	if dragging || dropped {
+	if (dragging || dropped) && (!app.compact || n.window != nil) {
 		// The engine applies the release event to the handle before dispatching
 		// updates. Read that layout so a quick drop still uses its final point.
 		owner := fluid.element_window(ui, handle)
@@ -343,13 +364,15 @@ update_notebook :: proc(app: ^Showcase, ui: ^fluid.UI, area: fluid.Pins, dt: f64
 		opacity := smoothstep(clamp((progress^ - 0.22) / 0.78, 0, 1))
 		fluid.set_hidden(ui, id, opacity == 0)
 		fluid.set_color(ui, id, {110, 175, 132, u8(160 * opacity)})
-		fluid.set_layout(ui, id, dock_pins(area, hint_side))
+		fluid.set_layout(ui, id, app.compact ? area : dock_pins(area, hint_side))
 	}
 
 	if n.window != nil {
 		fluid.set_layout(ui, p[.Surface], fluid.bounds(ui, n.window.viewport))
+	} else if app.compact {
+		fluid.set_layout(ui, p[.Surface], notebook_pins(n))
 	} else if !dragging || !n.moved {
-		fluid.set_target(ui, p[.Surface], dock_pins(area, n.side))
+		fluid.set_target(ui, p[.Surface], notebook_pins(n))
 	}
 	panel := fluid.bounds(ui, p[.Surface])
 	layout := notebook_layout(n, panel)
@@ -392,10 +415,19 @@ dock_pins :: proc(area: fluid.Pins, side: Dock_Side) -> fluid.Pins {
 	return fluid.rect(x, area.top, NOTEBOOK_WIDTH, fluid.height(area))
 }
 
+notebook_pins :: proc(n: ^Notebook) -> fluid.Pins {
+	return n.owner.compact ? n.area : dock_pins(n.area, n.side)
+}
+
 float_notebook :: proc(n: ^Notebook, ui: ^fluid.UI, position: [2]f32) -> bool {
+	flags := fluid.Window_Flags{.Hidden, .Borderless, .Transparent}
+	if ui.window.directional_focus {
+		flags |= {.Directional_Focus}
+	}
 	window := fluid.create_window(ui, {
 		title = "Notebook", size = NOTEBOOK_FLOAT_SIZE, minimum_size = NOTEBOOK_FLOAT_SIZE,
-		flags = {.Hidden, .Borderless, .Transparent}, background = EDGE, text_color = INK,
+		flags = flags, background = EDGE, text_color = INK,
+		ui_scale = n.owner.scale,
 	})
 	if window != nil {
 		if fluid.set_window_position(window, fluid.desktop_point(ui.window, position)) &&
@@ -430,7 +462,12 @@ dock_notebook :: proc(n: ^Notebook, ui: ^fluid.UI, side: Dock_Side) {
 		fluid.close_window(n.window)
 		n.window = nil
 	}
-	fluid.animate_to(ui, n.parts[.Surface], dock_pins(n.area, side), damped_animation(0.34))
+	if n.owner.compact {
+		n.owner.workspace_view = .Notebook
+		fluid.set_layout(ui, n.parts[.Surface], notebook_pins(n))
+	} else {
+		fluid.animate_to(ui, n.parts[.Surface], notebook_pins(n), damped_animation(0.34))
+	}
 }
 
 transfer_notebook :: proc(n: ^Notebook, ui: ^fluid.UI, window: ^fluid.Window) {

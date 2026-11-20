@@ -38,6 +38,14 @@ note_content_pins :: proc(pins: fluid.Pins) -> fluid.Pins {
 	return {pins.left + 0.8, pins.top + 0.5, pins.right - 1.3, pins.bottom - 0.5}
 }
 
+draw_note_list_focus :: proc(view: fluid.Element_View) {
+	if !view.focus_visible { return }
+	n := cast(^Notebook)fluid.element_behavior(view.ui, view.id).state
+	pins := fluid.bounds(view.ui, n.parts[.List])
+	scale := fluid.pixel_scale(view.window)
+	fluid.rounded_outline(view.window.renderer, fluid.pixel_rect(pins, scale), 0.5 * scale, 0.08 * scale, LIME)
+}
+
 note_list_input :: proc(state: rawptr, ui: ^fluid.UI, id: fluid.Element_ID, event: fluid.Element_Event) -> bool {
 	n := cast(^Notebook)state
 	list := &n.list

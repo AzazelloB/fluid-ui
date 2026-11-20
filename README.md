@@ -11,6 +11,10 @@ brew install odin vulkan-loader molten-vk
 odin run examples/showcase -minimum-os-version:11.0
 ```
 
+Append `-- --large-ui` to try the showcase with larger text and controls.
+Append `-- --remote-navigation` to preview arrow-key focus navigation.
+Use `-- --large-ui --remote-navigation` to combine them.
+
 ## Run on Windows (x64)
 
 Install [Odin dev-2026-11a or newer](https://odin-lang.org/docs/install/), Visual Studio Build Tools with
@@ -27,3 +31,6 @@ odin build examples/showcase "-out:$out\showcase.exe" -o:speed -subsystem:window
 The showcase uses the Vulkan loader installed by the graphics driver. Vulkan
 shaders are embedded in the build. Presentation uses mailbox when the surface
 offers it and falls back to FIFO otherwise.
+
+Pass `--large-ui` for a larger interface or `--remote-navigation` to
+preview arrow-key focus navigation. The flags can be combined.

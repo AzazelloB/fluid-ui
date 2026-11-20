@@ -2,6 +2,7 @@ package main
 
 import "core:math"
 import fluid "../.."
+import "../../elements"
 
 Site :: enum {North, Creek, Ridge}
 Site_Info :: struct {
@@ -17,6 +18,8 @@ sites := [Site]Site_Info{
 }
 
 GUTTER :: f32(1.25)
+Workspace_View :: enum {Canopy, Readings, Notebook}
+workspace_titles := [Workspace_View]string{.Canopy = "Canopy", .Readings = "Readings", .Notebook = "Notebook"}
 
 Showcase :: struct {
 	launch: Launch_Reveal,
@@ -27,11 +30,22 @@ Showcase :: struct {
 	telemetry: Telemetry,
 	notebook: Notebook,
 	dock_space: [Dock_Side]f32,
+	workspace_tabs: [Workspace_View]fluid.Element_ID,
+	workspace_view: Workspace_View,
+	compact: bool,
+	focus_target: Maybe(fluid.Element_ID),
+	scale: f32,
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
 	window := ui.window
 	create_title_bar(&app.title_bar, window)
+	window.key_fallback = {app, showcase_key}
+	for title, view in workspace_titles {
+		tab := field_button(window, title, .Secondary)
+		app.workspace_tabs[view] = tab
+		fluid.on_press(ui, tab, app, select_workspace)
+	}
 	create_bamboo(app, ui)
 	create_telemetry(app, ui)
 	create_notebook(app, ui)
@@ -69,15 +83,47 @@ refresh_site :: proc(app: ^Showcase, ui: ^fluid.UI) {
 
 update_showcase :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	viewport := fluid.bounds(ui, ui.window.viewport)
-	body := viewport
-	body.top = TITLE_BAR_HEIGHT
+	focused := ui.focused
 	layout_title_bar(app, ui, viewport)
 
-	area := fluid.Pins{body.left + GUTTER, body.top + 0.375, body.right - GUTTER, body.bottom - GUTTER}
-	update_notebook(app, ui, area, dt)
+	area := fluid.Pins{viewport.left + GUTTER, TITLE_BAR_HEIGHT + 0.375, viewport.right - GUTTER, viewport.bottom - GUTTER}
+	area = centered_area(area, 105)
+	compact := fluid.width(area) < NOTEBOOK_WIDTH + GUTTER + 35 || fluid.height(area) < 32
+	if compact && !app.compact {
+		if workspace, ok := workspace_for_focus(app, focused).?; ok {
+			app.workspace_view = workspace
+		}
+		app.dock_space = {}
+	} else if !compact && app.compact {
+		if app.notebook.window == nil {
+			app.dock_space[app.notebook.side] = NOTEBOOK_WIDTH + GUTTER
+		}
+		if focused == app.workspace_tabs[app.workspace_view] {
+			app.focus_target = workspace_focus(app)
+		}
+	}
+	app.compact = compact
+	modal := app.panels.settings_open || app.panels.card_progress > 0 || app.panels.card_open
+	for tab, view in app.workspace_tabs {
+		fluid.set_hidden(ui, tab, !compact || modal)
+		if compact {
+			width := fluid.width(area) / 3
+			fluid.set_layout(ui, tab, fluid.rect(area.left + f32(view) * width, area.top, width - 0.25, 2.5))
+			elements.set_button_selected(ui, tab, app.workspace_view == view)
+		}
+	}
+	if compact && !modal {
+		area.top += 3
+	}
+
+	notebook_area := area
+	if compact {
+		notebook_area = centered_area(area, 34)
+	}
+	update_notebook(app, ui, notebook_area, dt)
 	full_area := area
 	for side in Dock_Side {
-		target := app.notebook.window == nil && app.notebook.side == side ? NOTEBOOK_WIDTH + GUTTER : 0
+		target := !compact && app.notebook.window == nil && app.notebook.side == side ? NOTEBOOK_WIDTH + GUTTER : 0
 		space := &app.dock_space[side]
 		space^ += (target - space^) * (1 - math.exp(-16 * f32(dt)))
 		if abs(space^ - target) < 0.02 {
@@ -88,36 +134,102 @@ update_showcase :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
 	area.right -= app.dock_space[.Right]
 
 	forest_bottom := area.top + clamp(fluid.height(area) * 0.43, 15, 21)
+	if compact {
+		forest_bottom = area.bottom
+	}
 	canopy := fluid.Pins{area.left, area.top, area.right, forest_bottom}
+	readings := fluid.Pins{area.left, forest_bottom + GUTTER, area.right, area.bottom}
+	if compact {
+		readings = centered_area(area, 55)
+	}
 	update_bamboo(app, ui, canopy, dt)
-	update_telemetry(app, ui, {area.left, forest_bottom + GUTTER, area.right, area.bottom}, dt)
+	update_telemetry(app, ui, readings, dt)
 	update_station_panels(app, ui, canopy, full_area, dt)
-	if app.panels.settings_open || app.panels.card_progress >= 1 {
-		clear_workspace_layout(app, ui)
+	covered := app.panels.settings_open || app.panels.card_progress >= 1
+	show_canopy := !compact || app.workspace_view == .Canopy
+	if covered || !show_canopy {
+		clear_canopy_layout(&app.forest, ui)
+	}
+	if covered || (compact && app.workspace_view != .Readings) {
+		clear_telemetry_layout(&app.telemetry, ui)
+	}
+	if app.notebook.window == nil && (covered || (compact && app.workspace_view != .Notebook)) {
+		clear_notebook_layout(&app.notebook, ui)
+	}
+	if target, ok := app.focus_target.?; ok {
+		if has_layout(ui, target) && (!modal || target == app.panels.back) {
+			app.focus_target = nil
+			fluid.focus(ui, target)
+		}
+	} else if focused == ui.focused && fluid.valid(ui, focused) && !has_layout(ui, focused) {
+		fluid.blur(ui)
+		if compact && !modal {
+			fluid.focus(ui, app.workspace_tabs[app.workspace_view])
+		}
 	}
 }
 
-// Keep the dashboard state while it is off-page. Empty bounds also remove
-// dashboard controls from keyboard navigation.
-clear_workspace_layout :: proc(app: ^Showcase, ui: ^fluid.UI) {
-	forest := &app.forest
-	fluid.set_layout(ui, forest.background, {})
-	fluid.set_layout(ui, forest.ring, {})
-	for id in forest.markers { fluid.set_layout(ui, id, {}) }
+centered_area :: proc(area: fluid.Pins, maximum_width: f32) -> fluid.Pins {
+	inset := max(0, (fluid.width(area) - maximum_width) / 2)
+	return {area.left + inset, area.top, area.right - inset, area.bottom}
+}
+
+select_workspace :: proc(app: ^Showcase, ui: ^fluid.UI, id: fluid.Element_ID) {
+	for tab, view in app.workspace_tabs {
+		if tab == id {
+			app.workspace_view = view
+			if view == .Notebook && app.notebook.window != nil {
+				dock_notebook(&app.notebook, ui, app.notebook.side)
+			}
+			return
+		}
+	}
+}
+
+workspace_for_focus :: proc(app: ^Showcase, id: fluid.Element_ID) -> Maybe(Workspace_View) {
+	for part in app.notebook.parts {
+		if id == part { return .Notebook }
+	}
+	if id == app.notebook.save { return .Notebook }
 	t := &app.telemetry
 	for tile in t.tiles {
-		for id in ([]fluid.Element_ID{tile.button, tile.title, tile.value}) { fluid.set_layout(ui, id, {}) }
+		if id == tile.button { return .Readings }
 	}
-	for id in t.column_labels { fluid.set_layout(ui, id, {}) }
-	for id in t.legend { fluid.set_layout(ui, id, {}) }
-	for id in ([]fluid.Element_ID{t.view_mode, t.latest, t.sample_status, t.readout, t.chart, t.archive,
-		t.range_choice, t.compare_button, t.limit_label, t.limit, t.alert}) {
-		fluid.set_layout(ui, id, {})
+	for part in ([]fluid.Element_ID{t.view_mode, t.latest, t.chart, t.archive, t.range_choice, t.compare_button, t.limit}) {
+		if id == part { return .Readings }
 	}
-	n := &app.notebook
-	if n.window == nil {
-		for id in n.parts { fluid.set_layout(ui, id, {}) }
-		fluid.set_layout(ui, n.save, {})
-		fluid.set_layout(ui, n.arriving_text, {})
+	for marker in app.forest.markers {
+		if id == marker { return .Canopy }
 	}
+	if id == app.panels.card { return .Canopy }
+	return nil
+}
+
+workspace_focus :: proc(app: ^Showcase) -> fluid.Element_ID {
+	switch app.workspace_view {
+	case .Canopy: return app.forest.markers[app.site]
+	case .Readings: return app.telemetry.view_mode
+	case .Notebook: return app.notebook.parts[.New]
+	}
+	unreachable()
+}
+
+has_layout :: proc(ui: ^fluid.UI, id: fluid.Element_ID) -> bool {
+	pins := fluid.bounds(ui, id)
+	return fluid.is_active(ui, id) && fluid.width(pins) > 0 && fluid.height(pins) > 0
+}
+
+showcase_key :: proc(state: rawptr, window: ^fluid.Window, event: fluid.Keyboard_Event) -> bool {
+	if !event.down || event.key != .Escape { return false }
+	app := cast(^Showcase)state
+	if event.repeat { return true }
+	if app.panels.settings_open || app.panels.card_open {
+		press_station_panel(app, window.ui, app.panels.back)
+	} else if app.compact && app.workspace_view != .Canopy {
+		app.workspace_view = .Canopy
+		app.focus_target = app.workspace_tabs[.Canopy]
+	} else {
+		return false
+	}
+	return true
 }

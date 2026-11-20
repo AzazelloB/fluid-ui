@@ -4,8 +4,13 @@ import "core:fmt"
 import "core:math"
 import virtual "core:mem/virtual"
 
-Window_Flag :: enum {Hidden, Borderless, Transparent, Custom_Title_Bar}
+Window_Flag :: enum {Hidden, Borderless, Transparent, Custom_Title_Bar, Directional_Focus}
 Window_Flags :: bit_set[Window_Flag]
+
+Window_Key_Fallback :: struct {
+	state: rawptr,
+	handle: proc(state: rawptr, window: ^Window, event: Keyboard_Event) -> bool,
+}
 
 Config :: struct {
 	title:        cstring,
@@ -14,6 +19,7 @@ Config :: struct {
 	flags:        Window_Flags,
 	background:   Maybe(Color),
 	text_color:   Maybe(Color),
+	ui_scale:     Maybe(f32), // Additional scale for UI units. Defaults to 1.
 }
 
 // Window pointers expire on close. Transfer elements before closing
@@ -33,6 +39,9 @@ Window :: struct {
 	closing:          bool,
 	display_scale:    f32,
 	coordinate_scale: f32,
+	ui_scale:         f32,
+	key_fallback:     Window_Key_Fallback,
+	directional_focus: bool,
 	minimum_size:     [2]f32,
 	custom_title_bar: bool,
 	storage:          virtual.Arena,
@@ -46,11 +55,17 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 	} else {
 		window = new(Window)
 	}
+	ui_scale := config.ui_scale.? or_else 1
+	assert(ui_scale > 0 && !math.is_nan(ui_scale) && !math.is_inf(ui_scale))
+	native_config := config
+	native_config.size *= ui_scale
+	native_config.minimum_size *= ui_scale
 	window^ = Window{
-		ui = app, minimum_size = config.minimum_size,
+		ui = app, minimum_size = native_config.minimum_size, ui_scale = ui_scale,
 		background = config.background.? or_else Color{0, 0, 0, 255},
 		text_color = config.text_color.? or_else Color{255, 255, 255, 255},
 		custom_title_bar = .Custom_Title_Bar in config.flags,
+		directional_focus = .Directional_Focus in config.flags,
 	}
 	if err := virtual.arena_init_growing(&window.storage); err != nil {
 		append(&app.free_windows, window)
@@ -64,7 +79,7 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 			append(&app.free_windows, window)
 		}
 	}
-	if !platform_create_window(window, config) {
+	if !platform_create_window(window, native_config) {
 		fmt.eprintln("Cannot create native window")
 		return nil
 	}
@@ -253,6 +268,8 @@ native_window_size :: proc(size: [2]f32, coordinate_scale: f32) -> [2]i32 {
 @(private="package")
 sync_window_geometry :: proc(window: ^Window) {
 	display_scale, coordinate_scale := platform_window_scales(window)
+	display_scale *= window.ui_scale
+	coordinate_scale *= window.ui_scale
 	if display_scale != window.display_scale {
 		window.display_scale = display_scale
 		release_window_text(window)

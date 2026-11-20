@@ -77,11 +77,16 @@ control_key :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, even
 	}
 	activate := event.key == fluid.Key.Space || event.key == fluid.Key.Enter || event.key == fluid.Key.Keypad_Enter
 	direction := control_key_direction(event.key)
+	directional_focus := fluid.element_window(ui, id).directional_focus
+	if directional_focus && (event.key == .Up || event.key == .Down) {
+		return false
+	}
 	switch &state in control.state {
 	case Toggle_Control:
 		if activate && event.down && !event.repeat {
 			emit_change(ui, id, !state.checked)
 		}
+		return !directional_focus || activate
 	case Guard_Control:
 		if activate && !event.repeat {
 			if event.down {
@@ -90,6 +95,7 @@ control_key :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, even
 				stop_guard(ui, id, &state, event.timestamp, true)
 			}
 		}
+		return !directional_focus || activate
 	case Choice_Control:
 		if event.down && direction != 0 {
 			propose_choice(ui, id, &state, state.selected + direction)
@@ -102,7 +108,7 @@ control_key :: proc(control: ^Control, ui: ^fluid.UI, id: fluid.Element_ID, even
 		}
 	case Button_Control, Text_Control:
 	}
-	return true
+	return !directional_focus || activate || direction != 0
 }
 
 @(private="file")

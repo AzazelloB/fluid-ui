@@ -49,6 +49,7 @@ Telemetry :: struct {
 	plot_labels: [6]^fluid.Text,
 	archive_text: [ARCHIVE_COLUMNS]^fluid.Text,
 	archive_first, archive_count: int,
+	compact_archive: bool,
 }
 
 create_telemetry :: proc(app: ^Showcase, ui: ^fluid.UI) {
@@ -153,6 +154,7 @@ seek_latest :: proc(t: ^Telemetry, ui: ^fluid.UI, id: fluid.Element_ID) {
 	t.note_cursor, t.cursor_pulse = false, 0
 	set_telemetry_visibility(t, ui)
 	refresh_readings(t, ui)
+	fluid.focus(ui, t.chart)
 }
 
 change_dry_limit :: proc(t: ^Telemetry, ui: ^fluid.UI, change: elements.Control_Change) {
@@ -216,26 +218,46 @@ update_telemetry :: proc(app: ^Showcase, ui: ^fluid.UI, area: fluid.Pins, dt: f6
 		refresh_readings(t, ui)
 	}
 
+	layout_telemetry(t, ui, area, rate)
+}
+
+layout_telemetry :: proc(t: ^Telemetry, ui: ^fluid.UI, area: fluid.Pins, rate: f64) {
 	gap :: f32(0.65)
+	compact := fluid.width(area) < 36
+	compact_tiles := fluid.width(area) < 24
+	short_titles := [Metric]string{.Moisture = "Moisture", .Temperature = "Air temp.", .Light = "Light"}
 	width := (fluid.width(area) - 2 * gap) / 3
 	for tile, metric in t.tiles {
 		x := area.left + f32(metric) * (width + gap)
+		fluid.set_label(ui, tile.title, compact_tiles ? short_titles[metric] : metrics[metric].title)
 		fluid.set_layout(ui, tile.button, fluid.rect(x, area.top, width, 4.2))
-		fluid.set_layout(ui, tile.title, fluid.rect(x + 0.85, area.top + 0.52, width - 1, 1.15))
-		fluid.set_layout(ui, tile.value, fluid.rect(x + 0.85, area.top + 1.7, width - 1, 1.95))
+		inset := compact_tiles ? f32(0.5) : 0.85
+		fluid.set_layout(ui, tile.title, fluid.rect(x + inset, area.top + 0.52, width - 2 * inset, 1.15))
+		fluid.set_layout(ui, tile.value, fluid.rect(x + inset, area.top + 1.7, width - 2 * inset, 1.95))
 	}
 
 	y := area.top + 5
 	right := area.right
 	fluid.set_layout(ui, t.view_mode, fluid.rect(area.left, y, 8, 2))
-	fluid.set_layout(ui, t.range_choice, fluid.rect(area.left + 8.75, y, 11.5, 2))
-	fluid.set_layout(ui, t.compare_button, fluid.rect(area.left + 21, y, 7.25, 2))
 	fluid.set_layout(ui, t.latest, fluid.rect(right - 7.5, y, 7.5, 2))
 	fluid.set_layout(ui, t.sample_status, fluid.rect(right - 9, y, 9, 2))
+	range_left, controls_y := area.left + 8.75, y
+	if compact {
+		range_left, controls_y = area.left, y + 2.45
+	}
+	fluid.set_layout(ui, t.range_choice, fluid.rect(range_left, controls_y, 11.5, 2))
+	fluid.set_layout(ui, t.compare_button, fluid.rect(range_left + 12.25, controls_y, 7.25, 2))
 	following := t.show_samples && elements.scroll_follows_end(ui, t.archive)
 	fluid.set_hidden(ui, t.sample_status, !following)
 	fluid.set_hidden(ui, t.latest, following || (!t.show_samples && t.anchor == nil))
-	plot := fluid.Pins{area.left, y + 2.55, right, area.bottom - 1.95}
+	footer := area.bottom - 1.55
+	readout_y := footer
+	// The threshold, legend, and timestamp can all stay readable on a second row.
+	if !t.show_samples && (fluid.width(area) < 35 || (t.compare && fluid.width(area) < 41)) {
+		readout_y -= 1.45
+	}
+	plot_top := (t.show_samples ? y : controls_y) + 2.55
+	plot := fluid.Pins{area.left, plot_top, right, readout_y - 0.4}
 	if t.show_samples {
 		// Leave room for a column header inside the clipped scroll view.
 		fluid.set_layout(ui, t.archive, {plot.left, plot.top + 1.4, plot.right, plot.bottom})
@@ -253,17 +275,29 @@ update_telemetry :: proc(app: ^Showcase, ui: ^fluid.UI, area: fluid.Pins, dt: f6
 	} else {
 		fluid.set_label(ui, t.readout, "")
 	}
-	footer := area.bottom - 1.55
 	fluid.set_layout(ui, t.limit_label, fluid.rect(area.left, footer, 3.8, 1.55))
 	fluid.set_layout(ui, t.limit, fluid.rect(area.left + 4.05, footer, 3.8, 1.55))
 	fluid.set_layout(ui, t.alert, fluid.rect(area.left + 8.65, footer, 8.5, 1.55))
-	fluid.set_layout(ui, t.readout, fluid.rect(right - 17, footer, 17, 1.55))
+	fluid.set_layout(ui, t.readout, fluid.rect(right - 17, readout_y, 17, 1.55))
 	if t.compare && !t.show_samples {
+		legend_width := min(f32(8), fluid.width(area) / 3)
 		for site in Site {
-			fluid.set_layout(ui, t.legend[site], fluid.rect(area.left + 8 * f32(site), footer, 8, 1.55))
+			fluid.set_layout(ui, t.legend[site], fluid.rect(area.left + legend_width * f32(site), footer, legend_width, 1.55))
 			value := reading(site, t.metric, displayed_sample(t))
 			fluid.set_label(ui, t.legend[site], fmt.tprintf("%s  %.*f %s", sites[site].code, t.metric == .Light ? 0 : 1, value, metrics[t.metric].unit))
 		}
+	}
+}
+
+clear_telemetry_layout :: proc(t: ^Telemetry, ui: ^fluid.UI) {
+	for tile in t.tiles {
+		for id in ([]fluid.Element_ID{tile.button, tile.title, tile.value}) { fluid.set_layout(ui, id, {}) }
+	}
+	for id in t.column_labels { fluid.set_layout(ui, id, {}) }
+	for id in t.legend { fluid.set_layout(ui, id, {}) }
+	for id in ([]fluid.Element_ID{t.view_mode, t.latest, t.sample_status, t.readout, t.chart, t.archive,
+		t.range_choice, t.compare_button, t.limit_label, t.limit, t.alert}) {
+		fluid.set_layout(ui, id, {})
 	}
 }
 
@@ -308,7 +342,15 @@ archive_offset :: proc(column: int, width: f32) -> f32 {
 }
 
 layout_archive_header :: proc(t: ^Telemetry, ui: ^fluid.UI, plot: fluid.Pins) {
+	compact := fluid.width(plot) < 24
+	if compact != t.compact_archive {
+		t.compact_archive = compact
+		release_archive_text(t)
+	}
+	headings := [ARCHIVE_COLUMNS]string{"Time", "Soil (%)", "Air (°C)", "Light (lx)"}
+	short_headings := [ARCHIVE_COLUMNS]string{"Day / time", "Soil %", "Air °C", "Light lx"}
 	for id, column in t.column_labels {
+		fluid.set_label(ui, id, compact ? short_headings[column] : headings[column])
 		x := plot.left + 0.8 + archive_offset(column, fluid.width(plot) - 2.1)
 		fluid.set_layout(ui, id, {x, plot.top, plot.right, plot.top + 1.2})
 	}
@@ -345,7 +387,7 @@ prepare_archive_text :: proc(t: ^Telemetry, window: ^fluid.Window, first, end: i
 	}
 	for sample in first..<end {
 		newline := sample + 1 < end
-		fmt.sbprintf(&columns[0], "%s", sample_timestamp(sample), newline = newline)
+		fmt.sbprintf(&columns[0], "%s", sample_timestamp(sample, t.compact_archive), newline = newline)
 		for metric in Metric {
 			fmt.sbprintf(&columns[int(metric) + 1], "%.*f", metric == .Light ? 0 : 1, reading(t.site, metric, sample), newline = newline)
 		}
@@ -364,7 +406,8 @@ release_archive_text :: proc(state: rawptr) {
 	t.archive_count = 0
 }
 
-sample_timestamp :: proc(sample: int) -> string {
+sample_timestamp :: proc(sample: int, shorten: bool = false) -> string {
 	seconds := (sample % SAMPLES_PER_DAY) * 30
-	return fmt.tprintf("Day %02d  %02d:%02d:%02d", sample / SAMPLES_PER_DAY + 1, seconds / 3600, seconds / 60 % 60, seconds % 60)
+	prefix := shorten ? "" : "Day "
+	return fmt.tprintf("%s%02d  %02d:%02d:%02d", prefix, sample / SAMPLES_PER_DAY + 1, seconds / 3600, seconds / 60 % 60, seconds % 60)
 }

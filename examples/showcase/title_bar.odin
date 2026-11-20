@@ -48,6 +48,7 @@ layout_title_bar :: proc(app: ^Showcase, ui: ^fluid.UI, viewport: fluid.Pins) {
 			fluid.set_layout(ui, bar.buttons[button], {left = left, right = left + button_width, bottom = bottom})
 		}
 	}
-	fluid.set_layout(ui, bar.settings, fluid.rect(settings_right - 2.6, (bottom - 1.9) / 2, 2.6, 1.9))
-	fluid.set_layout(ui, bar.title, {left = title_left, right = title_left + 14, bottom = bottom})
+	settings_left := settings_right - 2.6
+	fluid.set_layout(ui, bar.settings, fluid.rect(settings_left, (bottom - 1.9) / 2, 2.6, 1.9))
+	fluid.set_layout(ui, bar.title, {left = title_left, right = settings_left - 0.5, bottom = bottom})
 }

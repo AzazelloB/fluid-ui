@@ -72,6 +72,11 @@ All public lengths are plain `f32` values in UI units. One UI unit equals
 sizes and positions, and pointer coordinates use that unit. Display density is
 handled by the platform window and Vulkan renderer.
 
+Set `Config.ui_scale` to apply an additional positive scale to a window's UI
+units. The same scale applies to drawing, input coordinates, and the requested
+and minimum window sizes. The viewport reports the usable size in UI units,
+so layouts can reflow when larger text and controls take up more room.
+
 ## Pass values
 
 `bounds` returns a struct of numeric edges. Widgets take the same struct:
@@ -147,6 +152,23 @@ Presses use the coordinates of the mouse-down event. Behavior callbacks see
 hover from before behavior dispatch. Fluid refreshes hover again after
 layout and window changes so the cursor and drawing use the same result.
 The stock elements use `Style.hover_border` to change the border while hovered.
+
+## Directional focus
+
+Opt in with `.Directional_Focus` in the window flags. Unhandled arrow keys
+move focus toward visible, focusable elements in the same window. Focused
+elements get the first chance to handle arrows. Stock choice and number
+controls use Left and Right for changes in this mode and leave Up and Down
+available for navigation outside text editing. Tab and keyboard activation
+remain available.
+
+Use directional focus when simulating or supporting remote-style input.
+Desktop windows can use their default Tab traversal while text fields and
+choice controls handle arrow keys.
+
+The optional `window.key_fallback` lets the app handle keys such as Escape
+after the focused control and before directional focus or the Escape-to-quit
+default.
 
 ## Scroll views
 
