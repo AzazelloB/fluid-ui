@@ -17,35 +17,41 @@ float noise(vec2 p) {
                mix(hash(seed + 113.0), hash(seed + 114.0), t.x), t.y);
 }
 
-float leaf(vec2 p, vec2 base, vec2 tip, float width, float edge) {
+float leaf(vec2 p, vec2 base, vec2 tip, float width, float bend, float edge) {
     vec2 axis = tip - base;
     vec2 delta = p - base;
     float length_squared = dot(axis, axis);
     float inverse_length = inversesqrt(length_squared);
     float along = dot(delta, axis) / length_squared;
-    float across = abs(dot(delta, vec2(-axis.y, axis.x))) * inverse_length;
-    float t = clamp(along, 0.0, 1.0);
+    float across = dot(delta, vec2(-axis.y, axis.x)) * inverse_length;
+    float t = clamp((along - 0.16) / 0.84, 0.0, 1.0);
     float taper = t * (1.0 - t) * (4.8 - 2.0 * t);
-    float distance = max(across - width * taper, (abs(along - 0.5) - 0.5) / inverse_length);
+    float petiole = 0.0045 * (1.0 - smoothstep(0.16, 0.30, along));
+    float half_width = max(petiole, width * taper);
+    float distance = max(abs(across - bend * taper) - half_width,
+                         max(-along, along - 1.0) / inverse_length);
     return 1.0 - smoothstep(-edge, edge, distance);
 }
 
 float spray(vec2 p, float seed, float edge) {
     vec2 root = vec2(0.0, 0.88);
     vec2 stem = vec2(0.26, -0.39 - 0.07 * hash(seed));
+    vec2 normal = vec2(-stem.y, stem.x);
     vec2 delta = p - root;
     float along = clamp(dot(delta, stem) / dot(stem, stem), 0.0, 1.0);
-    float branch = 1.0 - smoothstep(0.003 - edge, 0.003 + edge, length(delta - stem * along));
-    for (int pair = 0; pair < 3; ++pair) {
-        float t = float(pair);
-        vec2 base = root + stem * (0.29 + t * 0.23);
+    float radius = mix(0.009, 0.004, along);
+    float branch = 1.0 - smoothstep(radius - edge, radius + edge, length(delta - stem * along));
+    for (int i = 0; i < 6; ++i) {
+        float t = float(i);
+        vec2 base = root + stem * (0.30 + t * 0.105);
         float variation = hash(seed + t * 15.1);
-        vec2 upper = base + vec2(0.075 + 0.045 * variation, -0.26 + 0.024 * t);
-        vec2 lower = base + vec2(0.14 - 0.023 * t, 0.09 + 0.08 * variation);
-        branch = max(branch, leaf(p, base, upper, 0.022 + 0.006 * variation, edge));
-        branch = max(branch, leaf(p, base, lower, 0.024, edge));
+        float side = i % 2 == 0 ? -1.0 : 1.0;
+        float span = 0.47 - 0.030 * t + 0.045 * variation;
+        // Alternate sides while keeping both sets of leaves angled toward the tip.
+        vec2 tip = base + (stem + normal * side * 0.39) * span;
+        branch = max(branch, leaf(p, base, tip, 0.017 + 0.004 * variation, side * 0.006, edge));
     }
-    return max(branch, leaf(p, root + stem * 0.90, root + stem * 1.42, 0.025, edge));
+    return max(branch, leaf(p, root + stem * 0.94, root + stem * 1.39, 0.022, 0.009, edge));
 }
 
 vec3 bamboo_layer(vec3 behind, vec2 p, float depth, float layer, float time, float pixel) {
@@ -74,19 +80,23 @@ vec3 bamboo_layer(vec3 behind, vec2 p, float depth, float layer, float time, flo
     float presence = mix(0.47, 1.0, depth) * fade;
     vec3 color = behind;
 
-    vec2 branch_p = vec2(x * side, node + x * side * wind * 0.12);
-    if (branch_p.x > -0.02 && branch_p.x < 0.42 && branch_p.y > 0.21 &&
-        branch_p.y < 0.92 && hash(band_seed + 24.0) > 0.29) {
-        float foliage = spray(branch_p, band_seed, pixel / spacing);
-        foliage *= 1.0 - smoothstep(0.44, 0.50, abs(local));
+    float joint = node - 0.88 + x * 0.31;
+    float edge = pixel / spacing;
+    // Fit the full spray between the stalk and its column boundary as it sways.
+    const float spray_extent = 0.40;
+    float spray_scale = min(1.0, (0.46 - center * side) / spray_extent);
+    vec2 branch_p = vec2(x * side / spray_scale, joint + 0.88 + x * side * wind * 0.12);
+    float spray_edge = edge / spray_scale;
+    if (branch_p.x > -0.009 - spray_edge && branch_p.x < spray_extent + spray_edge &&
+        branch_p.y > 0.22 - spray_edge && branch_p.y < 0.90 + spray_edge &&
+        hash(band_seed + 24.0) > 0.29) {
+        float foliage = spray(branch_p, band_seed, spray_edge);
         color = mix(color, mix(shade, light, 0.13 + 0.24 * clearing), foliage * presence);
     }
 
-    float joint = node - 0.88 + x * 0.31;
     float collar = 1.0 - smoothstep(0.007, 0.022, abs(joint));
     float radius = mix(0.033, 0.068, depth) * mix(0.62, 1.33, hash(seed + 11.0));
     radius *= 1.0 + 0.14 * collar - 0.18 * from_base;
-    float edge = pixel / spacing;
     float stalk = 1.0 - smoothstep(radius - edge, radius + edge, abs(x));
     if (stalk > 0.0) {
         float cross_section = clamp(x / radius, -1.0, 1.0);
