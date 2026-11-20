@@ -57,7 +57,7 @@ remove_appearance :: proc(app: ^UI, id: Element_ID) {
 // The engine owns the element and copies its label. An attached behavior can
 // supply its own state, event handling, and resource cleanup.
 create_element :: proc(window: ^Window, definition: Element_Definition) -> Element_ID {
-	assert(window.open)
+	assert(window.open && !window.closing, "Cannot create elements in a closing or closed window")
 	app := window.ui
 	element := Element{
 		window = window,

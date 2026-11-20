@@ -30,6 +30,7 @@ Window :: struct {
 	renderer:         ^Renderer,
 	platform:         Platform_Window,
 	open:             bool,
+	closing:          bool,
 	display_scale:    f32,
 	coordinate_scale: f32,
 	minimum_size:     [2]f32,
@@ -98,16 +99,30 @@ create_window :: proc(app: ^UI, config: Config) -> ^Window {
 // Elements and graphics resources are released before the window closes.
 // Transfer any elements you want to keep using before closing their window.
 close_window :: proc(window: ^Window) {
-	if !window.open {
+	if !window.open || window.closing {
 		return
 	}
 	app := window.ui
-	for ids in ([2]^[dynamic]Element_ID{&app.order, &app.hidden}) {
-		for index := len(ids^) - 1; index >= 0; index -= 1 {
+	for id in app.removing {
+		if element_window(app, id) == window {
+			window.close_requested = true
+			return
+		}
+	}
+	window.closing = true
+	members := make([dynamic]Element_ID, context.temp_allocator)
+	defer delete(members)
+	for ids in ([2][]Element_ID{app.order[:], app.hidden[:]}) {
+		for index := len(ids) - 1; index >= 0; index -= 1 {
 			id := ids[index]
 			if element_window(app, id) == window {
-				remove(app, id)
+				append(&members, id)
 			}
+		}
+	}
+	for id in members {
+		if valid(app, id) && element_window(app, id) == window {
+			remove(app, id)
 		}
 	}
 	cancel_window_effect(window)
@@ -292,6 +307,19 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Window) {
 	if source == destination {
 		return
 	}
+	assert(!destination.closing, "Cannot transfer elements into a closing window")
+	destination_viewport := destination.viewport
+	detach_input(app, id)
+	if !valid(app, id) || element_window(app, id) != source ||
+	   !destination.open || destination.closing || destination.viewport != destination_viewport {
+		return
+	}
+	release_element_text(app, id)
+	if !valid(app, id) || element_window(app, id) != source ||
+	   !destination.open || destination.closing || destination.viewport != destination_viewport {
+		return
+	}
+	element = get_element(app, id)
 	if motion := element_motion(app, id); motion != nil {
 		motion.from = transfer_pins(source, destination, motion.from)
 		motion.target = transfer_pins(source, destination, motion.target)
@@ -299,8 +327,6 @@ transfer :: proc(app: ^UI, id: Element_ID, destination: ^Window) {
 	} else {
 		element.pins = transfer_pins(source, destination, element.pins)
 	}
-	detach_input(app, id)
-	release_element_text(app, id)
 	element.window = destination
 }
 
