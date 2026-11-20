@@ -22,16 +22,6 @@ lerp_pins :: proc(from, to: fluid.Pins, t: f32) -> fluid.Pins {
 	}
 }
 
-arc :: proc(from, to: fluid.Pins, t: f32) -> fluid.Pins {
-	result := lerp_pins(from, to, t)
-	dx, dy := to.left - from.left, to.top - from.top
-	height := min(f32(6), math.sqrt(dx * dx + dy * dy) * 0.2)
-	offset := 4 * height * t * (1 - t)
-	result.top -= offset
-	result.bottom -= offset
-	return result
-}
-
 smoothstep :: proc(t: f32) -> f32 {
 	return t * t * (3 - 2 * t)
 }

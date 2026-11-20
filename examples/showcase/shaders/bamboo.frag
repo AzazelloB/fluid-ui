@@ -105,9 +105,13 @@ vec4 shade(vec2 uv, vec2 size, vec4 data) {
     float time = data.x;
     vec2 p = vec2((uv.x - 0.5) * size.x / size.y, uv.y);
     float pixel = 0.75 / size.y;
-    vec2 sun = p - vec2(0.23, 0.28);
+    float creek = 1.0 - abs(data.w - 1.0);
+    float ridge = max(0.0, data.w - 1.0);
+    vec2 sun = p - vec2(0.23 + ridge * 0.13 - creek * 0.15, 0.28);
     float clearing = exp(-dot(sun, sun) * 5.4);
-    vec3 haze = mix(vec3(0.15, 0.29, 0.24), vec3(0.69, 0.75, 0.49), clearing);
+    vec3 shadow = mix(vec3(0.085, 0.265, 0.20), vec3(0.06, 0.31, 0.30), creek);
+    vec3 light = mix(vec3(0.78, 0.84, 0.48), vec3(1.0, 0.76, 0.38), ridge);
+    vec3 haze = mix(shadow, light, clearing);
     float floor_y = 0.86 + 0.075 * noise(vec2(p.x * 5.3, 7.0));
     float floor_fade = smoothstep(floor_y - 0.075, floor_y + 0.09, p.y);
     vec3 color = mix(haze, vec3(0.048, 0.14, 0.107), floor_fade);
@@ -140,5 +144,11 @@ vec4 shade(vec2 uv, vec2 size, vec4 data) {
 
     float vignette = 1.0 - 0.66 * smoothstep(0.2, 0.74, length((uv - vec2(0.55, 0.39)) * vec2(0.95, 1.20)));
     float grain = hash(dot(gl_FragCoord.xy, vec2(0.75488, 0.56984))) - 0.5;
-    return vec4(color * vignette + grain / 255.0, 1.0);
+    float lower_shade = smoothstep(0.57, 0.98, uv.y);
+    float top_shade = 1.0 - smoothstep(0.015, 0.22, uv.y);
+    color = mix(color * vignette, vec3(0.033, 0.085, 0.06), max(lower_shade * 0.38, top_shade * 0.55));
+    float radius = size.y * 0.038;
+    vec2 edge = abs((uv - 0.5) * size) - size * 0.5 + radius;
+    float distance_to_edge = length(max(edge, 0.0)) + min(max(edge.x, edge.y), 0.0) - radius;
+    return vec4(color + grain / 255.0, 1.0 - smoothstep(-1.0, 0.0, distance_to_edge));
 }

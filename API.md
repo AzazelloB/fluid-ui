@@ -27,10 +27,10 @@ use `fluid.set_draw` to replace it. Pass `nil` to stop drawing. Panels, labels,
 and other stock controls in `elements` install their own draw callbacks. The
 callback receives an `Element_View` with the current bounds,
 text style, and interaction state. `render_clip` intersects the current drawing
-clip and returns the previous rectangle for `restore_render_clip`. The Controls
-showcase paints the Name
-field in application code and calls `elements.draw_field_text` to draw editing
-content with app-specified placeholder, selection, and caret colors. Custom choice drawing can read `elements.choice_slots` and
+clip and returns the previous rectangle for `restore_render_clip`. An
+application can paint its own field surface and call `elements.draw_field_text`
+to draw editing content with its own placeholder, selection, and caret colors.
+Custom choice drawing can read `elements.choice_slots` and
 `elements.choice_slot`, including drag previews. Custom confirmation drawing
 can read `elements.confirmation_progress` for the animated fill.
 

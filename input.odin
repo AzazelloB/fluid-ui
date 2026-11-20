@@ -53,6 +53,7 @@ refresh_hover :: proc(app: ^UI) {
 
 @(private="package")
 press_at :: proc(app: ^UI, window: ^Window, event: Platform_Event) {
+	app.keyboard_focus = false
 	point := event.position / window_scale(window)
 	id := hit_test(app, window, point)
 	focus_id := NO_ELEMENT

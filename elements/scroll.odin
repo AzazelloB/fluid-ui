@@ -237,7 +237,7 @@ draw_scroll_view :: proc(view: fluid.Element_View) {
 	advance_scroll(state, layout)
 	renderer := view.window.renderer
 	fluid.paint_styled_surface(renderer, fluid.pixel_rect(view.pins, layout.scale), view.style,
-		view.color, view.hovered, view.focused, layout.scale)
+		view.color, view.hovered, view.focus_visible, layout.scale)
 	if layout.clip.w == 0 || layout.clip.h == 0 { return }
 	if layout.last > state.first {
 		fluid.render_fill_rect(renderer, fluid.pixel_rect(layout.track, layout.scale), state.track_color)

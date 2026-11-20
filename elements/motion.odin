@@ -82,7 +82,7 @@ button_color :: proc(base, selected: fluid.Color, emphasis, hover, press: f32) -
 	}
 }
 
-@(private="file")
+@(private="package")
 mix_color :: proc(a, b: fluid.Color, t: f32) -> fluid.Color {
 	return {
 		u8(f32(a.r) * (1 - t) + f32(b.r) * t),

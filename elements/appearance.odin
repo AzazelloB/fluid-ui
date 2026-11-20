@@ -12,10 +12,10 @@ draw_element_surface :: proc(view: fluid.Element_View) {
 	scale := fluid.pixel_scale(view.window)
 	pixels := fluid.pixel_rect(view.pins, scale)
 	if view.surface {
-		fluid.paint_styled_surface(view.window.renderer, pixels, view.style, view.color, view.hovered, view.focused, scale)
-	} else if view.focused {
+		fluid.paint_styled_surface(view.window.renderer, pixels, view.style, view.color, view.hovered, view.focus_visible, scale)
+	} else if view.focus_visible {
 		if color, styled := view.style.focus_border.?; styled {
-			fluid.render_rect(view.window.renderer, pixels, color)
+			fluid.rounded_outline(view.window.renderer, pixels, view.style.radius * scale, max(view.style.border_width, 0.0625) * scale, color, view.style.square_corners)
 		}
 	}
 }

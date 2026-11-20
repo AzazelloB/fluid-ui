@@ -1,129 +1,123 @@
 package main
 
+import "core:math"
 import fluid "../.."
-import "../../elements"
 
-Showcase_Tab :: enum {Rectangles, Transitions, Docking, Catalog, Controls, Logs, Bamboo}
-
-Showcase_Page :: struct {
-	title:  string,
-	create: proc(app: ^Showcase, ui: ^fluid.UI),
-	leave:  proc(app: ^Showcase, ui: ^fluid.UI),
+Site :: enum {North, Creek, Ridge}
+Site_Info :: struct {
+	code, name: string,
+	color: fluid.Color,
+	marker: [2]f32,
+	moisture, temperature, light: f32,
+}
+sites := [Site]Site_Info{
+	.North = {"N1", "North Grove", LIME, {0.22, 0.44}, 54, 21, 890},
+	.Creek = {"C2", "Creek Bend", JADE, {0.52, 0.58}, 69, 19, 620},
+	.Ridge = {"R3", "Sun Ridge", HONEY, {0.79, 0.40}, 33, 26, 1380},
 }
 
-showcase_pages := [Showcase_Tab]Showcase_Page{
-	.Rectangles = {title = "Rectangles", create = create_rectangles},
-	.Transitions = {title = "Transitions", create = create_conversations},
-	.Docking = {title = "Docking", create = create_docking, leave = leave_docking},
-	.Catalog = {title = "Catalog", create = create_catalog, leave = leave_catalog},
-	.Controls = {title = "Controls", create = create_controls},
-	.Logs = {title = "Logs", create = create_logs},
-	.Bamboo = {title = "Bamboo Forest", create = create_bamboo},
-}
+GUTTER :: f32(1.25)
 
 Showcase :: struct {
-	launch:        Launch_Reveal,
-	tabs:          [Showcase_Tab]fluid.Element_ID,
-	current_page:  Maybe(Showcase_Tab),
-	page_elements: [dynamic]fluid.Element_ID,
-	sidebar:       fluid.Element_ID,
-	title_bar:     Title_Bar,
-	rectangles:    Rectangles,
-	conversations: Conversations,
-	docking:       Docking,
-	catalog:       Catalog,
-	controls:      Controls,
-	logs:          Logs,
-	bamboo:        Bamboo,
+	launch: Launch_Reveal,
+	title_bar: Title_Bar,
+	site: Site,
+	forest: Bamboo,
+	panels: Station_Panels,
+	telemetry: Telemetry,
+	notebook: Notebook,
+	dock_space: [Dock_Side]f32,
 }
 
 create_showcase :: proc(app: ^Showcase, ui: ^fluid.UI) {
-	app.page_elements = make([dynamic]fluid.Element_ID, 0, 64)
-	start_launch_reveal(&app.launch, ui.window)
-	app.sidebar = elements.panel(ui.window, {}, {21, 29, 40, 255})
-	create_title_bar(&app.title_bar, ui.window)
-	for page, index in showcase_pages {
-		tab := demo_control(ui.window, elements.button(ui.window, {}, page.title, .Secondary))
-		fluid.set_text_style(ui, tab, TEXT_BODY, INK)
-		app.tabs[index] = tab
-		fluid.on_press(ui, tab, app, select_tab)
-	}
-	update_navigation(app, ui, 0)
-	// Register navigation first because page layouts read the sidebar bounds.
-	fluid.on_update(ui, app.sidebar, app, update_navigation)
-	select_tab(app, ui, app.tabs[.Rectangles])
+	window := ui.window
+	create_title_bar(&app.title_bar, window)
+	create_bamboo(app, ui)
+	create_telemetry(app, ui)
+	create_notebook(app, ui)
+	create_station_panels(app, ui)
+	fluid.on_press(ui, app.title_bar.settings, app, press_station_panel)
+	app.dock_space[.Right] = NOTEBOOK_WIDTH + GUTTER
+	refresh_site(app, ui)
+	update_showcase(app, ui, 0)
+	fluid.on_update(ui, app.forest.background, app, update_showcase)
+	start_launch_reveal(&app.launch, window)
 }
 
-select_tab :: proc(app: ^Showcase, ui: ^fluid.UI, id: fluid.Element_ID) {
-	for tab, index in app.tabs {
-		if tab != id || app.current_page == index {
+select_site :: proc(app: ^Showcase, ui: ^fluid.UI, id: fluid.Element_ID) {
+	for site in Site {
+		if id != app.forest.markers[site] {
 			continue
 		}
-		if previous, open := app.current_page.?; open {
-			if leave := showcase_pages[previous].leave; leave != nil {
-				leave(app, ui)
-			}
-			fluid.remove_all(ui, app.page_elements[:])
-			clear(&app.page_elements)
-			elements.set_button_selected(ui, app.tabs[previous], false)
+		if app.site != site {
+			app.site = site
+			fluid.animate_to(ui, app.forest.ring, marker_ring_pins(&app.forest, ui, site), damped_animation(0.3))
+			refresh_site(app, ui)
 		}
-		showcase_pages[index].create(app, ui)
-		app.current_page = index
-		elements.set_button_selected(ui, tab, true)
 		return
 	}
 }
 
-track_page_element :: proc(ids: ^[dynamic]fluid.Element_ID, id: fluid.Element_ID) -> fluid.Element_ID {
-	append(ids, id)
-	return id
+refresh_site :: proc(app: ^Showcase, ui: ^fluid.UI) {
+	for site in Site {
+		fluid.set_text_style(ui, app.forest.markers[site], TEXT_BODY, app.site == site ? DARK_INK : INK, .Center, .Bold)
+	}
+	fluid.set_label(ui, app.title_bar.title, sites[app.site].name)
+	refresh_telemetry(app, ui)
+	refresh_notebook(app, ui)
 }
 
-remove_page_element :: proc(ui: ^fluid.UI, ids: ^[dynamic]fluid.Element_ID, id: fluid.Element_ID) {
-	fluid.remove(ui, id)
-	for value, index in ids^ {
-		if value == id {
-			ordered_remove(ids, index)
-			return
+update_showcase :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
+	viewport := fluid.bounds(ui, ui.window.viewport)
+	body := viewport
+	body.top = TITLE_BAR_HEIGHT
+	layout_title_bar(app, ui, viewport)
+
+	area := fluid.Pins{body.left + GUTTER, body.top + 0.375, body.right - GUTTER, body.bottom - GUTTER}
+	update_notebook(app, ui, area, dt)
+	full_area := area
+	for side in Dock_Side {
+		target := app.notebook.window == nil && app.notebook.side == side ? NOTEBOOK_WIDTH + GUTTER : 0
+		space := &app.dock_space[side]
+		space^ += (target - space^) * (1 - math.exp(-16 * f32(dt)))
+		if abs(space^ - target) < 0.02 {
+			space^ = target
 		}
 	}
-}
+	area.left += app.dock_space[.Left]
+	area.right -= app.dock_space[.Right]
 
-showcase_body :: proc(ui: ^fluid.UI) -> fluid.Pins {
-	viewport := fluid.bounds(ui, ui.window.viewport)
-	viewport.top = min(TITLE_BAR_HEIGHT, viewport.bottom)
-	return viewport
-}
-
-content_pins :: proc(ui: ^fluid.UI, sidebar: fluid.Element_ID, viewport: fluid.Pins) -> fluid.Pins {
-	return {
-		left = fluid.bounds(ui, sidebar).right + 2.25,
-		top = viewport.top + 1.5,
-		right = viewport.right - 2.25,
-		bottom = viewport.bottom - 1.5,
+	forest_bottom := area.top + clamp(fluid.height(area) * 0.43, 15, 21)
+	canopy := fluid.Pins{area.left, area.top, area.right, forest_bottom}
+	update_bamboo(app, ui, canopy, dt)
+	update_telemetry(app, ui, {area.left, forest_bottom + GUTTER, area.right, area.bottom}, dt)
+	update_station_panels(app, ui, canopy, full_area, dt)
+	if app.panels.settings_open || app.panels.card_progress >= 1 {
+		clear_workspace_layout(app, ui)
 	}
 }
 
-tab_pins :: proc(sidebar_right: f32, index: int) -> fluid.Pins {
-	top := TITLE_BAR_HEIGHT + 1.5 + f32(index) * 3.375
-	return {left = 0.75, top = top, right = sidebar_right - 0.75, bottom = top + 2.875}
-}
-
-navigation_width :: proc(ui: ^fluid.UI) -> f32 {
-	width := f32(11.25)
-	for page in showcase_pages {
-		text_width, _ := fluid.measure_text(ui.window, page.title, TEXT_BODY)
-		width = max(width, text_width + 3.5)
+// Keep the dashboard state while it is off-page. Empty bounds also remove
+// dashboard controls from keyboard navigation.
+clear_workspace_layout :: proc(app: ^Showcase, ui: ^fluid.UI) {
+	forest := &app.forest
+	fluid.set_layout(ui, forest.background, {})
+	fluid.set_layout(ui, forest.ring, {})
+	for id in forest.markers { fluid.set_layout(ui, id, {}) }
+	t := &app.telemetry
+	for tile in t.tiles {
+		for id in ([]fluid.Element_ID{tile.button, tile.title, tile.value}) { fluid.set_layout(ui, id, {}) }
 	}
-	return width
-}
-
-update_navigation :: proc(app: ^Showcase, ui: ^fluid.UI, dt: f64) {
-	viewport := fluid.bounds(ui, ui.window.viewport)
-	sidebar_right := navigation_width(ui)
-	fluid.set_target(ui, app.sidebar, {right = sidebar_right, bottom = viewport.bottom})
-	layout_title_bar(&app.title_bar, ui, viewport, sidebar_right)
-	for tab, index in app.tabs {
-		fluid.set_target(ui, tab, tab_pins(sidebar_right, int(index)))
+	for id in t.column_labels { fluid.set_layout(ui, id, {}) }
+	for id in t.legend { fluid.set_layout(ui, id, {}) }
+	for id in ([]fluid.Element_ID{t.view_mode, t.latest, t.sample_status, t.readout, t.chart, t.archive,
+		t.range_choice, t.compare_button, t.limit_label, t.limit, t.alert}) {
+		fluid.set_layout(ui, id, {})
+	}
+	n := &app.notebook
+	if n.window == nil {
+		for id in n.parts { fluid.set_layout(ui, id, {}) }
+		fluid.set_layout(ui, n.save, {})
+		fluid.set_layout(ui, n.arriving_text, {})
 	}
 }

@@ -16,6 +16,7 @@ Element_View :: struct {
 	text_wrap: bool,
 	text_color: Color,
 	surface, hovered, pressed, focused: bool,
+	focus_visible: bool, // Keyboard focus indicator. Use focused for editing and input state.
 }
 
 Element_Draw :: proc(view: Element_View)
@@ -30,6 +31,7 @@ make_element_view :: proc(ui: ^UI, id: Element_ID, element: ^Element) -> Element
 		ui = ui, id = id, window = element.window, pins = element.pins,
 		text_size = 1, text_color = element.window.text_color,
 		hovered = ui.hovered == id, pressed = ui.pressed == id, focused = ui.focused == id,
+		focus_visible = ui.focused == id && ui.keyboard_focus,
 	}
 	if appearance := element_appearance(ui, id); appearance != nil {
 		view.label, view.color, view.style = appearance.label, appearance.color, appearance.style

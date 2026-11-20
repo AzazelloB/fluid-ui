@@ -75,6 +75,12 @@ focused_in :: proc(ui: ^UI, window: ^Window) -> Element_ID {
 
 @(private="package")
 handle_key :: proc(ui: ^UI, window: ^Window, event: Keyboard_Event) -> bool {
+	if event.down {
+		#partial switch event.key {
+		case .Tab, .Left, .Right, .Up, .Down, .Home, .End, .Page_Up, .Page_Down, .Space, .Enter, .Keypad_Enter:
+			ui.keyboard_focus = true
+		}
+	}
 	if event.down && event.key == Key.Tab {
 		focus_next(ui, window, event.modifiers & {.Shift} != {})
 		return true

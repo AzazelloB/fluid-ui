@@ -16,6 +16,7 @@ UI :: struct {
 	free_elements:                     [dynamic]int,
 	hovered:                           Element_ID,
 	pressed:                           Element_ID,
+	keyboard_focus: bool,
 	focused, captured:                 Element_ID,
 	drag:                              Drag,
 	vulkan:                            Vulkan,

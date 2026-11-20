@@ -75,7 +75,12 @@ DEFAULT_FIELD_TEXT_STYLE :: Field_Text_Style{
 // Apply the shared field interaction animation to caller-provided styling.
 draw_field :: proc(view: fluid.Element_View, style: Maybe(Field_Text_Style) = nil) {
 	control := get_control(view.ui, view.id)
-	frame := button_frame(view, &control.motion, control.palette, false, fluid.monotonic_ns())
+	field := view
+	if hover, ok := field.style.hover_border.?; ok {
+		field.style.hover_border = mix_color(field.style.border, hover, 0.2)
+	}
+	frame := button_frame(field, &control.motion, control.palette, false, fluid.monotonic_ns())
+	frame.color = view.color
 	draw_element_surface(frame)
 	draw_field_text(frame, style)
 }
@@ -175,7 +180,7 @@ draw_choice :: proc(element: fluid.Element_View, choice: ^Choice_Control, palett
 		if !choice.neighbors || slot.selected {
 			view := element
 			view.pins = r
-			view.focused = element.focused && slot.selected
+			view.focus_visible = element.focus_visible && slot.selected
 			view.hovered = over
 			view.pressed = element.pressed && over
 			if !choice.neighbors {

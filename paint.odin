@@ -12,15 +12,12 @@ paint_styled_surface :: proc(renderer: ^Renderer, pixels: FRect, style: Style,
 			border_color = hover_color
 		}
 	}
-	border_width := style.border_width
-	if focused {
-		if focus_border, styled := style.focus_border.?; styled {
-			border_color = focus_border
-			border_width = max(border_width, 0.0625)
-		}
-	}
 	paint_surface(renderer, pixels, color, border_color,
-		style.radius * scale, border_width * scale, style.shadow * scale, style.square_corners)
+		style.radius * scale, style.border_width * scale, style.shadow * scale, style.square_corners)
+	if focus_border, styled := style.focus_border.?; focused && styled {
+		rounded_outline(renderer, pixels, style.radius * scale,
+			max(style.border_width, 0.0625) * scale, focus_border, style.square_corners)
+	}
 }
 
 // Draw a surface using physical pixels and caller-resolved colors.
@@ -96,6 +93,57 @@ rounded_fill :: proc(renderer: ^Renderer, rect: FRect, requested_radius: f32, co
 				i32(1 + i), i32(1 + COUNT + i), i32(1 + COUNT + next),
 				i32(1 + i), i32(1 + COUNT + next), i32(1 + next)}
 			copy(indices[base:base + 9], triangle[:])
+		}
+	}
+	render_geometry(renderer, vertices[:], indices[:])
+}
+
+// Stroke a rounded rectangle without painting its center.
+rounded_outline :: proc(renderer: ^Renderer, rect: FRect, radius, width: f32, color: Color,
+	square_corners: bit_set[Corner] = {},
+) {
+	half := min(rect.w, rect.h) / 2
+	if half <= 0 || width <= 0 || color.a == 0 {
+		return
+	}
+	radius := clamp(radius, 0, half)
+	width := min(width, half)
+	STEPS :: 12
+	COUNT :: 4 * (STEPS + 1)
+	vertices: [COUNT * 4]Vertex
+	indices: [COUNT * 18]i32
+	tint := [4]f32{f32(color.r) / 255, f32(color.g) / 255, f32(color.b) / 255, f32(color.a) / 255}
+	clear := [4]f32{tint.r, tint.g, tint.b, 0}
+	corners := [4][2]f32{{rect.x + rect.w, rect.y}, {rect.x + rect.w, rect.y + rect.h},
+		{rect.x, rect.y + rect.h}, {rect.x, rect.y}}
+	inward := [4][2]f32{{-1, 1}, {-1, -1}, {1, -1}, {1, 1}}
+	for corner in 0..<4 {
+		arc := radius
+		if Corner(corner) in square_corners { arc = 0 }
+		center := corners[corner] + inward[corner] * arc
+		for step in 0..=STEPS {
+			i := corner * (STEPS + 1) + step
+			a := (f32(corner - 1) + f32(step) / STEPS) * math.PI / 2
+			normal := [2]f32{math.cos(a), math.sin(a)}
+			outer := center + normal * arc
+			inner := outer - normal * width
+			inset := corners[corner] + inward[corner] * width
+			if arc < width {
+				inner = inset
+			}
+			v := i * 4
+			vertices[v + 0] = {outer + normal, clear}
+			vertices[v + 1] = {outer, tint}
+			vertices[v + 2] = {inner, tint}
+			vertices[v + 3] = {inner - normal * min(f32(1), half - width), clear}
+			next := i32((i + 1) % COUNT * 4)
+			for band in 0..<3 {
+				k := i32(v + band)
+				n := next + i32(band)
+				triangles := [6]i32{k, n, k + 1, k + 1, n, n + 1}
+				offset := i * 18 + band * 6
+				copy(indices[offset:offset + 6], triangles[:])
+			}
 		}
 	}
 	render_geometry(renderer, vertices[:], indices[:])
